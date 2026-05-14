@@ -15,6 +15,7 @@ import {
   VariableScope,
   getTimeElapsed,
   ChatStagePublicData,
+  CohortConfig,
 } from '@deliberation-lab/utils';
 import {
   getFirestoreStage,
@@ -28,6 +29,7 @@ import {
   completeParticipantTransfer,
   executeDirectTransfers,
   DirectTransferInstructions,
+  findOrCreateOverflowCohort,
 } from './participant.utils';
 import {generateVariablesForScope} from './variables.utils';
 
@@ -112,13 +114,52 @@ export const createParticipant = onCall(async (request) => {
 
   // Run document write as transaction to ensure consistency
   await app.firestore().runTransaction(async (transaction) => {
-    // TODO: Confirm that cohort is not at max capacity
+    // Get cohort config to check capacity
+    const cohortDocRef = app
+      .firestore()
+      .collection('experiments')
+      .doc(data.experimentId)
+      .collection('cohorts')
+      .doc(data.cohortId);
+    const cohort = (await transaction.get(cohortDocRef)).data() as CohortConfig;
+
+    let assignedCohortId = data.cohortId;
+
+    if (cohort) {
+      const maxParticipants = cohort.participantConfig.maxParticipantsPerCohort;
+      if (maxParticipants !== null) {
+        // Count active (non-deleted) participants in this cohort
+        const participantsSnapshot = await transaction.get(
+          app
+            .firestore()
+            .collection(`experiments/${data.experimentId}/participants`)
+            .where('currentCohortId', '==', data.cohortId)
+            .where('currentStatus', '!=', ParticipantStatus.DELETED),
+        );
+        const currentCount = participantsSnapshot.docs.length;
+
+        if (currentCount + 1 > maxParticipants) {
+          // Find or create overflow cohort
+          assignedCohortId = await findOrCreateOverflowCohort(
+            transaction,
+            data.experimentId,
+            cohort.alias,
+            maxParticipants,
+            1,
+            cohort.participantConfig,
+          );
+        }
+      }
+    }
+
+    // Update participant config with assigned cohort ID
+    participantConfig.currentCohortId = assignedCohortId;
 
     // Confirm that cohort is not locked
     const experiment = (
       await app.firestore().doc(`experiments/${data.experimentId}`).get()
     ).data() as Experiment;
-    if (experiment.cohortLockMap[data.cohortId]) {
+    if (experiment.cohortLockMap[assignedCohortId]) {
       // TODO: Return failure and handle accordingly on frontend
       return;
     }
@@ -162,7 +203,7 @@ export const createParticipant = onCall(async (request) => {
       {
         scope: VariableScope.PARTICIPANT,
         experimentId: data.experimentId,
-        cohortId: data.cohortId,
+        cohortId: participantConfig.currentCohortId,
         participantId: participantConfig.privateId,
       },
     );
