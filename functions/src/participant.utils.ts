@@ -586,20 +586,20 @@ async function handleSurveyAutoTransfer(
  * @param participantConfig - Config for new cohort if created
  * @returns The cohort ID to use (either existing overflow or newly created)
  */
-async function findOrCreateOverflowCohort(
+export async function findOrCreateOverflowCohort(
   transaction: FirebaseFirestore.Transaction,
   experimentId: string,
-  alias: string,
+  alias: string | undefined,
   maxParticipants: number,
   newParticipantCount: number,
   participantConfig: CohortConfig['participantConfig'],
 ): Promise<string> {
   const firestore = app.firestore();
 
-  // Query all cohorts with this alias
+  // Query all cohorts with this alias (fall back to empty string to prevent undefined query crashes)
   const cohortsSnapshot = await firestore
     .collection(`experiments/${experimentId}/cohorts`)
-    .where('alias', '==', alias)
+    .where('alias', '==', alias ?? '')
     .get();
 
   // Check each cohort for available capacity using the definition's limit
@@ -622,19 +622,27 @@ async function findOrCreateOverflowCohort(
   // Warn if transfer group exceeds max capacity (cohort will be over-filled)
   if (newParticipantCount > maxParticipants) {
     console.warn(
-      `[OVERFLOW] Transfer group size (${newParticipantCount}) exceeds maxParticipantsPerCohort (${maxParticipants}) for alias "${alias}". ` +
+      `[OVERFLOW] Transfer group size (${newParticipantCount}) exceeds maxParticipantsPerCohort (${maxParticipants}) for alias "${alias ?? ''}". ` +
         `Cohort will exceed capacity limit.`,
     );
   }
+
+  // Determine sequential overflow numbering index based on existing cohort count
+  const overflowIndex = cohortsSnapshot.docs.length;
+  const padZero = (num: number) => num.toString().padStart(2, '0');
+
+  const cohortName = alias
+    ? `${alias} (Overflow ${padZero(overflowIndex)})`
+    : `Overflow ${padZero(overflowIndex > 0 ? overflowIndex - 1 : 0)}`;
 
   // No cohort with capacity found - create new overflow cohort with same alias
   const timestamp = Timestamp.now() as UnifiedTimestamp;
   const newCohort = createCohortConfig({
     id: generateId(true),
-    alias, // Same alias for cohortValues inheritance
+    alias, // Same alias for cohortValues inheritance (omitted if undefined)
     metadata: createMetadataConfig({
       creator: 'system',
-      name: `${alias} (overflow)`,
+      name: cohortName,
       dateCreated: timestamp,
       dateModified: timestamp,
     }),
@@ -642,7 +650,7 @@ async function findOrCreateOverflowCohort(
   });
 
   console.log(
-    `[OVERFLOW] Creating new overflow cohort ${newCohort.id} for alias "${alias}"`,
+    `[OVERFLOW] Creating new overflow cohort ${newCohort.id} for alias "${alias ?? ''}"`,
   );
 
   await createCohortInternal(transaction, experimentId, newCohort);
