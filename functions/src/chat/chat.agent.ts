@@ -147,6 +147,7 @@ export async function createAgentChatMessageFromPrompt(
       stage,
       user,
       promptConfig,
+      triggerChatId === '',
     );
     message = response.message;
     if (!message) {

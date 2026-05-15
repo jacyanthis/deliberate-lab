@@ -58,6 +58,9 @@ export interface ParticipantProfile extends UserProfileBase {
   timestamps: ProgressTimestamps;
   anonymousProfiles: Record<string, AnonymousProfileMetadata>;
   connected: boolean | null;
+  isObserver?: boolean; // Read-only observer participant type
+  numOtherAgents?: number; // Number of other AI agents to spawn in group chat
+  swapMediator?: string; // Name or ID of mediator to swap to when entering a group chat
   // Maps variable name to value assigned specifically for this participant
   // This overrides any variable values set at the cohort/experiment levels.
   variableMap?: Record<string, string>;
@@ -181,6 +184,9 @@ export function createParticipantProfileExtended(
     anonymousProfiles: {},
     connected: config.agentConfig ? true : false,
     agentConfig: config.agentConfig ?? null,
+    isObserver: config.isObserver ?? false,
+    numOtherAgents: config.numOtherAgents ?? 0,
+    swapMediator: config.swapMediator ?? '',
     variableMap: config.variableMap ?? {},
   };
 }

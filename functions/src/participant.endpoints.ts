@@ -15,6 +15,10 @@ import {
   VariableScope,
   getTimeElapsed,
   ChatStagePublicData,
+  createAgentParticipantPersonaConfig,
+  createParticipantProfileBase,
+  generateId,
+  createProgressTimestamps,
 } from '@deliberation-lab/utils';
 import {
   getFirestoreStage,
@@ -29,6 +33,7 @@ import {
   executeDirectTransfers,
   DirectTransferInstructions,
 } from './participant.utils';
+
 import {generateVariablesForScope} from './variables.utils';
 
 import {onCall, HttpsError} from 'firebase-functions/v2/https';
@@ -42,7 +47,9 @@ import {
   prettyPrintErrors,
 } from './utils/validation';
 
-/** Create, update, and delete participants. */
+const formatAgentName = (publicId: string) => {
+  return String(publicId || 'Agent') + "'s Agent";
+};
 
 // ************************************************************************* //
 // createParticipant endpoint                                                //
@@ -80,6 +87,7 @@ export const createParticipant = onCall(async (request) => {
   const participantConfig = createParticipantProfileExtended({
     currentCohortId: data.cohortId,
     prolificId: data.prolificId,
+    isObserver: data.isObserver ?? false,
   });
 
   // Temporarily always mark participants as connected (PR #537)
@@ -167,7 +175,63 @@ export const createParticipant = onCall(async (request) => {
       },
     );
 
-    // Write new participant document
+    // Hoist variables from variableMap's values strictly using a list of keys
+    const HOIST_KEYS = [
+      'isObserver',
+      'numOtherAgents',
+      'swapMediator',
+    ] as const;
+
+    if (!participantConfig.agentConfig && participantConfig.variableMap) {
+      const pConfig = participantConfig as unknown as Record<string, unknown>;
+      for (const value of Object.values(participantConfig.variableMap)) {
+        try {
+          const parsed = JSON.parse(value);
+          const treatment = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (treatment && typeof treatment === 'object') {
+            for (const key of HOIST_KEYS) {
+              if (treatment[key] !== undefined) {
+                const currentType = typeof pConfig[key];
+                if (currentType === 'boolean') {
+                  pConfig[key] =
+                    String(treatment[key]) === 'true' ||
+                    treatment[key] === true;
+                } else if (currentType === 'number') {
+                  pConfig[key] = Number(treatment[key]);
+                } else {
+                  pConfig[key] = String(treatment[key]);
+                }
+              }
+            }
+          }
+        } catch {
+          // Not JSON, skip
+        }
+      }
+    }
+
+    // Fetch existing cohort participants for checking observer status and renaming (Reads first!)
+    const cohortParticipants = (
+      await app
+        .firestore()
+        .collection(`experiments/${data.experimentId}/participants`)
+        .where('currentCohortId', '==', data.cohortId)
+        .get()
+    ).docs.map((doc) => doc.data() as ParticipantProfileExtended);
+
+    const hasObserver = cohortParticipants.some(
+      (p) =>
+        !p.agentConfig &&
+        p.isObserver &&
+        p.currentStatus !== ParticipantStatus.DELETED,
+    );
+
+    // If the new participant is an agent and there's an observer in the cohort, rename them
+    if (participantConfig.agentConfig && hasObserver) {
+      participantConfig.name = formatAgentName(participantConfig.publicId);
+    }
+
+    // Write new participant document (All writes happen at the end!)
     transaction.set(document, participantConfig);
   });
 
@@ -255,6 +319,7 @@ export const updateParticipantWaiting = onCall(async (request) => {
       participant.currentCohortId,
       participant.currentStageId,
       participant.privateId,
+      transaction,
     );
 
     transaction.set(document, participant);
@@ -488,16 +553,15 @@ export const acceptParticipantExperimentStart = onCall(
       .collection('participants')
       .doc(privateId);
 
+    let participant: ParticipantProfileExtended | undefined;
     // Run document write as transaction to ensure consistency
     await app.firestore().runTransaction(async (transaction) => {
-      const participant = (
-        await document.get()
-      ).data() as ParticipantProfileExtended;
+      participant = (await document.get()).data() as ParticipantProfileExtended;
       participant.timestamps.startExperiment = Timestamp.now();
 
       // Set current stage as ready to start
-      const currentStageId = participant.currentStageId;
-      participant.timestamps.readyStages[currentStageId] = Timestamp.now();
+      participant.timestamps.readyStages[participant.currentStageId] =
+        Timestamp.now();
 
       // If all active participants have reached the next stage,
       // unlock that stage in CohortConfig
@@ -506,8 +570,8 @@ export const acceptParticipantExperimentStart = onCall(
         participant.currentCohortId,
         participant.currentStageId,
         participant.privateId,
+        transaction,
       );
-
       transaction.set(document, participant);
     });
 

@@ -89,6 +89,11 @@ export class CohortLanding extends MobxLitElement {
       );
     }
 
+    const isObserverMatch = window.location.href.match(
+      /[?&]isObserver=(true|1)/i,
+    );
+    const isObserver = Boolean(isObserverMatch);
+
     const response = await createParticipantCallable(
       this.firebaseService.functions,
       {
@@ -96,6 +101,7 @@ export class CohortLanding extends MobxLitElement {
         cohortId: params['cohort'],
         isAnonymous,
         prolificId,
+        isObserver,
       },
     );
 

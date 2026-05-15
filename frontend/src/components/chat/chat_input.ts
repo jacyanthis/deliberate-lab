@@ -78,11 +78,16 @@ export class ChatInputComponent extends MobxLitElement {
       return navigator.maxTouchPoints === 0;
     };
 
+    const isObserver = this.participantService.profile?.isObserver === true;
+    const placeholderText = isObserver
+      ? 'You are observing this discussion and cannot send messages.'
+      : 'Send message';
+
     return html`
       <div class="input">
         <pr-textarea
           size="small"
-          placeholder="Send message"
+          placeholder=${placeholderText}
           .value=${this.getUserInput()}
           ?focused=${autoFocus()}
           ?disabled=${this.isDisabled}
@@ -92,7 +97,7 @@ export class ChatInputComponent extends MobxLitElement {
         >
         </pr-textarea>
         <pr-tooltip
-          text="Send message"
+          text=${placeholderText}
           color="tertiary"
           variant="outlined"
           position="TOP_END"

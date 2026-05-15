@@ -112,7 +112,9 @@ export class ChatPanel extends MobxLitElement {
   }
 
   private renderParticipantList(topLayout = false) {
-    const activeParticipants = this.cohortService.activeParticipants;
+    const activeParticipants = this.cohortService.activeParticipants.filter(
+      (p) => !p.isObserver,
+    );
     const mediators = this.cohortService.getMediatorsForStage(
       this.stage?.id ?? '',
     );
