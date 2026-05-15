@@ -38,12 +38,25 @@ import {
   SurveyStagePublicData,
   TransferGroup,
   TransferStageConfig,
+  createAgentParticipantPersonaConfig,
+  createParticipantProfileBase,
+  createParticipantProfileExtended,
+  createProgressTimestamps,
+  setProfile,
+  ProfileType,
+  ProfileStageConfig,
+  AgentPersonaConfig,
+  MediatorProfileExtended,
+  ApiKeyType,
+  ParticipantPromptConfig,
+  DEFAULT_AGENT_MODEL_SETTINGS,
 } from '@deliberation-lab/utils';
 import {completeStageAsAgentParticipant} from './agent_participant.utils';
 import {
   getFirestoreActiveParticipants,
   getFirestoreCohortParticipants,
   getFirestoreExperiment,
+  getFirestoreParticipant,
   getFirestoreParticipantAnswerRef,
   getFirestoreStage,
   getFirestoreStagePublicDataRef,
@@ -51,6 +64,8 @@ import {
 import {generateId, UnifiedTimestamp} from '@deliberation-lab/utils';
 import {createCohortInternal} from './cohort.utils';
 import {sendSystemChatMessage} from './chat/chat.utils';
+import {createMediatorProfileForPersona} from './mediator.utils';
+import {sendInitialChatMessages} from './chat/chat.agent';
 
 import {app} from './app';
 
@@ -240,8 +255,11 @@ export async function updateCohortStageUnlocked(
   cohortId: string,
   stageId: string,
   currentParticipantId: string,
+  existingTransaction?: FirebaseFirestore.Transaction,
 ) {
-  await app.firestore().runTransaction(async (transaction) => {
+  let newlyUnlocked = false;
+
+  const runLogic = async (transaction: FirebaseFirestore.Transaction) => {
     // Get active participants for given cohort
     const activeParticipants = await getFirestoreActiveParticipants(
       experimentId,
@@ -327,6 +345,7 @@ export async function updateCohortStageUnlocked(
       return; // cohort deleted or already unlocked
     }
 
+    newlyUnlocked = true;
     cohortConfig.stageUnlockMap[stageId] = true;
     transaction.set(cohortDoc, cohortConfig);
 
@@ -341,7 +360,13 @@ export async function updateCohortStageUnlocked(
         completeStageAsAgentParticipant(experiment, participant);
       } // end agent participant if
     } // end participant loop
-  });
+  };
+
+  if (existingTransaction) {
+    await runLogic(existingTransaction);
+  } else {
+    await app.firestore().runTransaction(runLogic);
+  }
 }
 
 /** Automatically transfer participants based on config type. */
@@ -960,28 +985,27 @@ async function handleConditionAutoTransfer(
         ? definition.maxParticipantsPerCohort
         : experiment.defaultCohortConfig.maxParticipantsPerCohort;
 
-    if (maxParticipants !== null) {
-      const participants = await getFirestoreCohortParticipants(
-        experimentId,
-        targetCohortId,
+    const participants = await getFirestoreCohortParticipants(
+      experimentId,
+      targetCohortId,
+    );
+    if (
+      (maxParticipants !== null &&
+        participants.length + cohortParticipants.length > maxParticipants) ||
+      (participants.some((p) => !p.agentConfig && p.isObserver) &&
+        cohortParticipants.some((p) => !p.agentConfig && !p.isObserver))
+    ) {
+      console.log(
+        `[CONDITION] Cohort ${targetCohortId} full/observer conflict, finding overflow`,
       );
-      const currentCount = participants.length;
-
-      if (currentCount + cohortParticipants.length > maxParticipants) {
-        console.log(
-          `[CONDITION] Cohort ${targetCohortId} at capacity (${currentCount}/${maxParticipants}), finding overflow`,
-        );
-
-        // Find or create overflow cohort with same alias
-        targetCohortId = await findOrCreateOverflowCohort(
-          transaction,
-          experimentId,
-          readyGroup.targetCohortAlias,
-          maxParticipants,
-          cohortParticipants.length,
-          autoTransferConfig.autoCohortParticipantConfig,
-        );
-      }
+      targetCohortId = await findOrCreateOverflowCohort(
+        transaction,
+        experimentId,
+        readyGroup.targetCohortAlias,
+        maxParticipants || 1,
+        cohortParticipants.length,
+        autoTransferConfig.autoCohortParticipantConfig,
+      );
     }
 
     console.log(
@@ -1175,6 +1199,211 @@ export async function completeParticipantTransfer(
     participant,
     targetCohortId,
   );
+
+  const hasSpawningRequirement =
+    participant.isObserver ||
+    (participant.numOtherAgents && participant.numOtherAgents > 0);
+
+  if (hasSpawningRequirement) {
+    const numOtherAgents = participant.numOtherAgents ?? 0;
+
+    const stages = (
+      await app
+        .firestore()
+        .collection(`experiments/${experimentId}/stages`)
+        .get()
+    ).docs.map((doc) => doc.data());
+
+    const profileStage = stages.find(
+      (stage) => (stage as StageConfig).kind === StageKind.PROFILE,
+    ) as ProfileStageConfig | undefined;
+    const profileType =
+      profileStage?.profileType || ProfileType.ANONYMOUS_ANIMAL;
+    const isAnonymousCohort = !!profileStage;
+
+    const now = Timestamp.now();
+
+    // Fetch total experiment-wide participants count for setProfile indexing
+    const numParticipants = (
+      await app
+        .firestore()
+        .collection(`experiments/${experimentId}/participants`)
+        .count()
+        .get()
+    ).data().count;
+
+    const nextStageId = response.currentStageId || participant.currentStageId;
+
+    // Helper to get participant ref
+    const getParticipantRef = (id: string) =>
+      app.firestore().doc(`experiments/${experimentId}/participants/${id}`);
+
+    // 1. Spawn the human observer's representative agent (strictly for observer cohorts)
+    if (participant.isObserver) {
+      const repAgentId = generateId();
+      const repAgentTimestamps = createProgressTimestamps();
+      repAgentTimestamps.startExperiment = now;
+      repAgentTimestamps.acceptedTOS = now;
+      repAgentTimestamps.readyStages[stageIds[0]] = now;
+      repAgentTimestamps.readyStages[nextStageId] = now; // Mark nextStageId as ready so it doesn't block the stage unlock
+
+      const repAgentProfile = createParticipantProfileExtended({
+        currentCohortId: targetCohortId,
+        name: `${participant.publicId}'s Agent`,
+        avatar: '🤖',
+        agentConfig: {
+          agentId: repAgentId,
+          promptContext: `You are acting as an AI agent representing human observer ${participant.publicId}.`,
+          modelSettings: {
+            apiType: ApiKeyType.GEMINI_API_KEY,
+            modelName: 'gemini-3-flash-preview',
+          },
+        },
+        timestamps: repAgentTimestamps,
+        publicId: `${participant.publicId}-agent`,
+        privateId: repAgentId,
+        currentStageId: nextStageId,
+        connected: true,
+        currentStatus: ParticipantStatus.IN_PROGRESS,
+        isObserver: false,
+      });
+
+      transaction.set(getParticipantRef(repAgentId), repAgentProfile);
+    }
+
+    // 2. Spawn the other virtual AI agents directly inside targetCohortId
+    const agentParticipantsQuery = await app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('agentParticipants')
+      .get();
+
+    const personas = agentParticipantsQuery.docs.map(
+      (doc) => doc.data() as AgentPersonaConfig,
+    );
+
+    // Fetch all stage-specific prompts in parallel to ensure zero latency
+    const promptsMap: Record<string, string> = {};
+    await Promise.all(
+      personas.map(async (persona) => {
+        const promptDoc = await app
+          .firestore()
+          .collection('experiments')
+          .doc(experimentId)
+          .collection('agentParticipants')
+          .doc(persona.id)
+          .collection('prompts')
+          .doc(nextStageId)
+          .get();
+        if (promptDoc.exists) {
+          promptsMap[persona.id] = (
+            promptDoc.data() as ParticipantPromptConfig
+          ).promptContext;
+        }
+      }),
+    );
+
+    for (let i = 0; i < numOtherAgents; i++) {
+      const agentId = generateId();
+      const agentTimestamps = createProgressTimestamps();
+      agentTimestamps.startExperiment = now;
+      agentTimestamps.acceptedTOS = now;
+      agentTimestamps.readyStages[stageIds[0]] = now;
+      agentTimestamps.readyStages[nextStageId] = now;
+
+      const persona = personas[i % personas.length];
+      const promptContext = persona ? (promptsMap[persona.id] ?? '') : '';
+
+      const agentProfile = createParticipantProfileExtended({
+        currentCohortId: targetCohortId,
+        agentConfig: {
+          agentId: persona?.id ?? '',
+          promptContext,
+          modelSettings:
+            persona?.defaultModelSettings ?? DEFAULT_AGENT_MODEL_SETTINGS,
+        },
+        timestamps: agentTimestamps,
+        privateId: agentId,
+        currentStageId: nextStageId,
+        connected: true,
+        currentStatus: ParticipantStatus.IN_PROGRESS,
+        isObserver: false,
+      });
+
+      // Draw standard anonymous profile using a unique index offset and the cohort anonymity setting
+      setProfile(
+        numParticipants + i + 10,
+        agentProfile,
+        isAnonymousCohort,
+        profileType,
+      );
+
+      if (participant.isObserver && agentProfile.agentConfig) {
+        const virtualObserverName = String(agentProfile.publicId);
+        agentProfile.name = `${virtualObserverName}'s Agent`;
+        agentProfile.publicId = `${agentProfile.publicId}-agent`;
+        agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${virtualObserverName}.`;
+      }
+
+      transaction.set(getParticipantRef(agentId), agentProfile);
+    }
+
+    // 3. Dynamically swap the mediator in the cohort if specified
+    if (participant.swapMediator && participant.swapMediator.trim() !== '') {
+      const targetMediatorIdentifier = participant.swapMediator;
+
+      const agentMediators = await app
+        .firestore()
+        .collection('experiments')
+        .doc(experimentId)
+        .collection('agentMediators')
+        .get();
+
+      const matchingDoc = agentMediators.docs.find((doc) => {
+        const persona = doc.data() as AgentPersonaConfig;
+        return (
+          persona.id === targetMediatorIdentifier ||
+          persona.name === targetMediatorIdentifier ||
+          persona.defaultProfile?.name === targetMediatorIdentifier
+        );
+      });
+
+      if (matchingDoc) {
+        const matchingPersona = matchingDoc.data() as AgentPersonaConfig;
+        const existingMediatorsQuery = await app
+          .firestore()
+          .collection('experiments')
+          .doc(experimentId)
+          .collection('mediators')
+          .where('currentCohortId', '==', targetCohortId)
+          .get();
+
+        // Delete existing mediators in target cohort
+        for (const doc of existingMediatorsQuery.docs) {
+          transaction.delete(doc.ref);
+        }
+
+        // Create the new mediator
+        const newMediator = await createMediatorProfileForPersona(
+          experimentId,
+          targetCohortId,
+          matchingPersona,
+        );
+        newMediator.privateId = `mediator-${targetCohortId}-${matchingPersona.id}`;
+        newMediator.publicId = matchingPersona.id.substring(0, 8);
+
+        const newMediatorDoc = app
+          .firestore()
+          .collection('experiments')
+          .doc(experimentId)
+          .collection('mediators')
+          .doc(newMediator.privateId);
+
+        transaction.set(newMediatorDoc, newMediator);
+      }
+    }
+  }
 
   // 7. Save participant
   transaction.set(participantDoc, participant);

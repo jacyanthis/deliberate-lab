@@ -151,6 +151,9 @@ export const CreateParticipantData = Type.Object(
       }),
     ),
     prolificId: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+    isObserver: Type.Optional(Type.Boolean()),
+    numOtherAgents: Type.Optional(Type.Number()),
+    swapMediator: Type.Optional(Type.String()),
   },
   strict,
 );

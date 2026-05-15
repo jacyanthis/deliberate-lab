@@ -136,7 +136,15 @@ export class PrivateChatView extends MobxLitElement {
     const isNextDisabled = !minTurnsMet || !minTimeMet;
 
     return html`
-      <chat-interface .stage=${this.stage} .disableInput=${isDisabledInput()}>
+      <chat-interface
+        .stage=${this.stage}
+        .disableInput=${
+          // Observers are strictly read-only inside chat rooms (cannot type/send messages)
+          // but must retain interactive capabilities to complete surveys in other stages,
+          // so this gating is applied component-specifically rather than globally.
+          this.participantService.profile?.isObserver || isDisabledInput()
+        }
+      >
         ${chatMessages.map((message) => this.renderChatMessage(message))}
         ${isWaitingForResponse && !isConversationOver
           ? this.renderAgentIndicator(chatMessages)
