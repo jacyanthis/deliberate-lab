@@ -31,6 +31,24 @@ export const onPublicChatMessageCreated = onDocumentCreated(
     timeoutSeconds: 300,
   },
   async (event) => {
+    const message = (
+      await app
+        .firestore()
+        .collection('experiments')
+        .doc(event.params.experimentId)
+        .collection('cohorts')
+        .doc(event.params.cohortId)
+        .collection('publicStageData')
+        .doc(event.params.stageId)
+        .collection('chats')
+        .doc(event.params.chatId)
+        .get()
+    ).data() as ChatMessage;
+
+    if (message?.isSilent) {
+      return;
+    }
+
     const stage = await getFirestoreStage(
       event.params.experimentId,
       event.params.stageId,
@@ -134,7 +152,7 @@ export const onPrivateChatMessageCreated = onDocumentCreated(
         .doc(event.params.chatId)
         .get()
     ).data() as ChatMessage;
-    if (message.isError) {
+    if (message.isError || message.isSilent) {
       return;
     }
 

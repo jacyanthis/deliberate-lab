@@ -34,6 +34,7 @@ export interface ChatMessage {
   reasoning?: string; // model's internal chain-of-thought (from thinking/reasoning features)
   isError: boolean; // is error message (used for private chats)
   files?: StoredFile[]; // uploaded files (images, documents, etc.)
+  isSilent?: boolean; // indicates silent turns (retains reasoning history without showing in UI)
 }
 
 // ************************************************************************* //
@@ -65,6 +66,7 @@ export function createChatMessage(
     reasoning: config.reasoning ?? undefined,
     isError: config.isError ?? false,
     files: config.files ?? undefined,
+    isSilent: config.isSilent ?? undefined,
   };
 }
 
@@ -85,6 +87,7 @@ export function createParticipantChatMessage(
     reasoning: config.reasoning ?? undefined,
     isError: config.isError ?? false,
     files: config.files ?? undefined,
+    isSilent: config.isSilent ?? undefined,
   };
 }
 
@@ -105,6 +108,7 @@ export function createMediatorChatMessage(
     reasoning: config.reasoning ?? undefined,
     isError: config.isError ?? false,
     files: config.files ?? undefined,
+    isSilent: config.isSilent ?? undefined,
   };
 }
 

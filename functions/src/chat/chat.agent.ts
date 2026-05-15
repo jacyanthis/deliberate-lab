@@ -16,6 +16,10 @@ import {
   createChatMessage,
   createParticipantProfileBase,
   sanitizeRawResponseForLogging,
+  PromptItem,
+  PromptItemType,
+  TextPromptItem,
+  PromptItemGroup,
 } from '@deliberation-lab/utils';
 import {Timestamp} from 'firebase-admin/firestore';
 import {processModelResponse} from '../agent.utils';
@@ -185,6 +189,19 @@ export async function createAgentChatMessageFromPrompt(
   return true;
 }
 
+/** Helper to recursively check prompt items for a dynamic variable placeholder. */
+function hasReasoningPlaceholder(items: PromptItem[]): boolean {
+  return items.some((item) => {
+    if (item.type === PromptItemType.TEXT) {
+      return (item as TextPromptItem).text?.includes('{{reasoning}}');
+    }
+    if (item.type === PromptItemType.GROUP) {
+      return hasReasoningPlaceholder((item as PromptItemGroup).items || []);
+    }
+    return false;
+  });
+}
+
 /** Query for and return chat message for given agent and chat prompt configs. */
 export async function getAgentChatMessage(
   experimentId: string,
@@ -340,13 +357,21 @@ export async function getAgentChatMessage(
     }
   }
 
-  // No text and no files = failure
-  if (!response.text && (!response.files || response.files.length === 0)) {
-    return {message: null, success: false};
-  }
+  // Check if cumulative reasoning is actively configured for this agent/mediator
+  const isReasoningEnabled = Boolean(
+    (user.agentConfig?.promptContext &&
+      user.agentConfig.promptContext.includes('{{reasoning}}')) ||
+    hasReasoningPlaceholder(promptConfig.prompt),
+  );
 
-  if (!shouldRespond) {
-    // Logic for not responding (handled below)
+  // No text and no files = failure (unless they specifically chose to stay silent with reasoning enabled)
+  if (!shouldRespond && isReasoningEnabled) {
+    // Silent turns are allowed to have empty text
+  } else if (
+    !response.text &&
+    (!response.files || response.files.length === 0)
+  ) {
+    return {message: null, success: false};
   }
 
   // Only if agent participant is ready to end chat
@@ -381,7 +406,11 @@ export async function getAgentChatMessage(
       );
       await participantAnswerDoc.set({readyToEndChat: true}, {merge: true});
     }
-    return {message: null, success: true};
+
+    // If cumulative reasoning is NOT enabled, bypass database silent message creation
+    if (!isReasoningEnabled) {
+      return {message: null, success: true};
+    }
   }
 
   // If stage includes discussions, figure out what discussion ID should be
@@ -404,13 +433,14 @@ export async function getAgentChatMessage(
   const chatMessage = createChatMessage({
     type: user.type,
     discussionId,
-    message,
+    message: shouldRespond ? message : '',
     explanation,
     reasoning,
     profile: createParticipantProfileBase(user),
     senderId: user.publicId,
     agentId: user.agentConfig.agentId,
     timestamp: Timestamp.now(),
+    isSilent: !shouldRespond,
   });
 
   // Upload files to GCS
@@ -446,7 +476,7 @@ export async function sendAgentGroupChatMessage(
 ) {
   // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
-  if (chatSettings.wordsPerMinute) {
+  if (chatSettings.wordsPerMinute && !chatMessage.isSilent) {
     await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
   }
 
@@ -518,7 +548,7 @@ export async function sendAgentPrivateChatMessage(
 ) {
   // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
-  if (chatSettings.wordsPerMinute) {
+  if (chatSettings.wordsPerMinute && !chatMessage.isSilent) {
     await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
   }
 

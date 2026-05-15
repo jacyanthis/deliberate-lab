@@ -79,6 +79,12 @@ export function resolveTemplateVariables(
     const variable = variableDefinitions[variableName];
     const schemaType = variable?.schema?.type;
 
+    if (!variable) {
+      // System-injected or custom temporary variables fallback as string
+      typedValueMap[variableName] = valueMap[variableName] ?? '';
+      return;
+    }
+
     switch (schemaType) {
       case 'string':
         typedValueMap[variableName] = valueMap[variableName] ?? '';
@@ -203,6 +209,9 @@ function validateTokens(
     const schema = resolvePathInContextStack(value, contextStack);
 
     if (!schema) {
+      if (value === 'reasoning') {
+        continue;
+      }
       invalidVariables.set(value, {path: value, reason: 'undefined'});
     } else if (isDirectOutput && schema.type === 'object') {
       // Using {{object}} directly will render as "[object Object]"

@@ -568,6 +568,52 @@ async function processPromptItems(
     participantForVariables,
   );
 
+  // Inject the dynamic {{reasoning}} variable containing the agent's past reasoning history
+  let reasoningText = '';
+  const chatContext = promptData.data[stageId];
+  const messages = chatContext
+    ? stageKind === StageKind.PRIVATE_CHAT
+      ? chatContext.privateChatMessages
+      : chatContext.publicChatMessages
+    : [];
+
+  if (messages && messages.length > 0) {
+    const maxReasoningChars = 20000; // Approx 5,000 tokens (4 chars per token)
+
+    // Filter messages sent by this agent that have non-empty reasoning
+    const agentReasonings = messages
+      .filter(
+        (msg) =>
+          msg.senderId === userProfile.publicId &&
+          msg.reasoning &&
+          msg.reasoning.trim() !== '',
+      )
+      .map((msg) => msg.reasoning!);
+
+    if (agentReasonings.length > 0) {
+      const recentLines: string[] = [];
+      let charCount = 0;
+
+      // Iterate backwards (newest to oldest) to prioritize the most recent context
+      for (let i = agentReasonings.length - 1; i >= 0; i--) {
+        const reasoning = agentReasonings[i];
+        const roundLine = `Round ${i + 1} Reasoning: ${reasoning}\n\n`;
+        if (charCount + roundLine.length <= maxReasoningChars) {
+          recentLines.unshift(roundLine);
+          charCount += roundLine.length;
+        } else {
+          break;
+        }
+      }
+      if (recentLines.length > 0) {
+        reasoningText = 'REASONING HISTORY\n\n' + recentLines.join('');
+        reasoningText = reasoningText.trim();
+      }
+    }
+  }
+
+  valueMap['reasoning'] = reasoningText;
+
   for (const promptItem of promptItems) {
     // Check condition if present (only for private chat contexts)
     if (
@@ -597,7 +643,13 @@ async function processPromptItems(
           includeScaffolding,
         );
         if (profileContext) {
-          items.push(profileContext);
+          // Resolve template variables in profile context prompt items (like reasoning history)
+          const resolvedProfileContext = resolveTemplateVariables(
+            profileContext,
+            variableDefinitions,
+            valueMap,
+          );
+          items.push(resolvedProfileContext);
         }
         break;
       case PromptItemType.PROFILE_INFO:
