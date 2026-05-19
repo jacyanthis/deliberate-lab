@@ -431,7 +431,9 @@ async function fetchConditionDependencies(
   data: Record<string, StageContextData>,
 ): Promise<void> {
   const dependencies = extractConditionDependencies(condition);
-  const requiredStageIds = [...new Set(dependencies.map((dep) => dep.stageId))];
+  const requiredStageIds = [
+    ...new Set(dependencies.map((dep) => dep.stageId)),
+  ].filter((id) => id !== 'variables');
 
   // Find stages not already in data
   const missingStageIds = requiredStageIds.filter((stageId) => !data[stageId]);
@@ -498,7 +500,12 @@ function shouldIncludePromptItem(
     stageContextData,
     participants[0].publicId,
   );
-  return evaluateConditionWithStageAnswers(promptItem.condition, stageAnswers);
+  return evaluateConditionWithStageAnswers(
+    promptItem.condition,
+    stageAnswers,
+    undefined,
+    participants[0].variableMap,
+  );
 }
 
 /**

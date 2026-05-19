@@ -15,6 +15,7 @@ import {
   Condition,
 } from './condition';
 import {StageKind, StageConfig, StageParticipantAnswer} from '../stages/stage';
+import {VariableConfig} from '../variables';
 import {
   SurveyStageConfig,
   SurveyPerParticipantStageConfig,
@@ -42,11 +43,20 @@ export function getConditionDependencyValues(
   dependencies: ConditionTargetReference[],
   stageAnswers: Record<string, StageParticipantAnswer>,
   targetParticipantId?: string,
+  variableMap?: Record<string, string>,
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {};
 
   for (const targetRef of dependencies) {
     const dataKey = getConditionTargetKey(targetRef);
+
+    if (targetRef.stageId === 'variables') {
+      if (variableMap) {
+        values[dataKey] = variableMap[targetRef.questionId] ?? '';
+      }
+      continue;
+    }
+
     const stageAnswer = stageAnswers[targetRef.stageId];
 
     if (!stageAnswer || !('answerMap' in stageAnswer)) {
@@ -95,11 +105,19 @@ export function getConditionDependencyValuesWithCurrentStage(
   currentStageAnswers: Record<string, SurveyAnswer>,
   allStageAnswers?: Record<string, StageParticipantAnswer>,
   targetParticipantId?: string,
+  variableMap?: Record<string, string>,
 ): Record<string, unknown> {
   const values: Record<string, unknown> = {};
 
   for (const targetRef of dependencies) {
     const dataKey = getConditionTargetKey(targetRef);
+
+    if (targetRef.stageId === 'variables') {
+      if (variableMap) {
+        values[dataKey] = variableMap[targetRef.questionId] ?? '';
+      }
+      continue;
+    }
 
     if (targetRef.stageId === currentStageId) {
       // Reference to current stage - use local answers
@@ -113,6 +131,7 @@ export function getConditionDependencyValuesWithCurrentStage(
         [targetRef],
         allStageAnswers,
         targetParticipantId,
+        variableMap,
       );
       Object.assign(values, stageValues);
     }
@@ -136,6 +155,7 @@ export function evaluateConditionWithStageAnswers(
   condition: Condition | undefined,
   stageAnswers: Record<string, StageParticipantAnswer>,
   targetParticipantId?: string,
+  variableMap?: Record<string, string>,
 ): boolean {
   if (!condition) return true;
 
@@ -144,6 +164,7 @@ export function evaluateConditionWithStageAnswers(
     dependencies,
     stageAnswers,
     targetParticipantId,
+    variableMap,
   );
 
   return evaluateCondition(condition, targetValues);
@@ -163,6 +184,7 @@ export function filterByCondition<T extends {condition?: Condition}>(
   items: T[],
   stageAnswers: Record<string, StageParticipantAnswer>,
   targetParticipantId?: string,
+  variableMap?: Record<string, string>,
 ): T[] {
   // Extract all dependencies upfront for efficiency
   const allConditions = items
@@ -178,6 +200,7 @@ export function filterByCondition<T extends {condition?: Condition}>(
     allDependencies,
     stageAnswers,
     targetParticipantId,
+    variableMap,
   );
 
   return items.filter((item) => {
@@ -265,9 +288,14 @@ export function getConditionTargetsFromStages(
   options: {
     includeCurrentStage?: boolean;
     currentStageQuestionIndex?: number;
+    variableConfigs?: VariableConfig[];
   } = {},
 ): ConditionTarget[] {
-  const {includeCurrentStage = true, currentStageQuestionIndex} = options;
+  const {
+    includeCurrentStage = true,
+    currentStageQuestionIndex,
+    variableConfigs = [],
+  } = options;
 
   const currentStageIndex = stages.findIndex(
     (stage) => stage.id === currentStageId,
@@ -308,6 +336,17 @@ export function getConditionTargetsFromStages(
       );
       targets.push(...stageTargets);
     }
+  }
+
+  for (const variable of variableConfigs) {
+    targets.push({
+      ref: {
+        stageId: 'variables',
+        questionId: variable.definition.name,
+      },
+      label: `Variable: ${variable.definition.name}`,
+      type: 'text',
+    });
   }
 
   return targets;

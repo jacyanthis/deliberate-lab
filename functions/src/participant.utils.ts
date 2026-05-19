@@ -1263,6 +1263,17 @@ function buildTargetValuesForParticipant(
     }
   }
 
+  // Expose flat profile variableMap variables under the virtual 'variables' stage ID to the Condition System
+  if (participant.variableMap) {
+    for (const [key, val] of Object.entries(participant.variableMap)) {
+      const keyString = getConditionTargetKey({
+        stageId: 'variables',
+        questionId: key,
+      });
+      targetValues[keyString] = val;
+    }
+  }
+
   return targetValues;
 }
 
