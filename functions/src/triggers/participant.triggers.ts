@@ -7,6 +7,10 @@ import {
   ParticipantProfileExtended,
   StageConfig,
   StageKind,
+  buildGeneratePersonaPrompt,
+  createModelGenerationConfig,
+  ModelResponseStatus,
+  DEFAULT_AGENT_MODEL_SETTINGS,
 } from '@deliberation-lab/utils';
 import {startAgentParticipant} from '../agent_participant.utils';
 import {
@@ -14,7 +18,15 @@ import {
   getParticipantRecord,
   initializeParticipantStageAnswers,
 } from '../participant.utils';
-import {getFirestoreParticipant} from '../utils/firestore';
+import {
+  getFirestoreParticipant,
+  getFirestoreParticipantRef,
+  getExperimenterDataFromExperiment,
+  getFirestoreStage,
+} from '../utils/firestore';
+import {getAgentResponse} from '../agent.utils';
+import {samplePersonaParams} from '../agent_persona_sampling';
+import {getStructuredPromptConfig} from '../structured_prompt.utils';
 
 import {app} from '../app';
 
@@ -28,11 +40,132 @@ export const onParticipantCreation = onDocumentCreated(
     );
     if (!participant) return;
 
+    let activeParticipant = participant;
+
+    // 1. Asynchronously generate persona if flagged
+    if (participant.agentConfig && participant.needsPersonaGeneration) {
+      const experimentId = event.params.experimentId;
+      const experimenterData =
+        await getExperimenterDataFromExperiment(experimentId);
+
+      if (experimenterData) {
+        const params = samplePersonaParams();
+        const prompt = buildGeneratePersonaPrompt(params);
+        const generationConfig = createModelGenerationConfig({
+          includeReasoning: false,
+          providerOptions: {
+            google: {thinkingConfig: {thinkingBudget: 0}},
+            anthropic: {thinking: {type: 'disabled'}},
+          },
+        });
+
+        // Fetch stage prompt config to dynamically retrieve configured numRetries
+        const stage = await getFirestoreStage(
+          experimentId,
+          participant.currentStageId,
+        );
+        const promptConfig = stage
+          ? await getStructuredPromptConfig(experimentId, stage, participant)
+          : undefined;
+
+        const maxRetries = promptConfig?.numRetries ?? 0;
+        const initialDelay = 1000;
+        let success = false;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            const response = await getAgentResponse(
+              experimenterData.apiKeys,
+              prompt,
+              DEFAULT_AGENT_MODEL_SETTINGS,
+              generationConfig,
+            );
+
+            if (response.status === ModelResponseStatus.OK && response.text) {
+              await app.firestore().runTransaction(async (transaction) => {
+                const pRef = getFirestoreParticipantRef(
+                  experimentId,
+                  participant.privateId,
+                );
+                const pDoc = (
+                  await transaction.get(pRef)
+                ).data() as ParticipantProfileExtended;
+                if (pDoc?.agentConfig) {
+                  pDoc.agentConfig.promptContext = response.text ?? '';
+                  pDoc.connected = true;
+                  pDoc.needsPersonaGeneration = false;
+                  transaction.set(pRef, pDoc);
+                  activeParticipant = pDoc;
+                }
+              });
+              success = true;
+              break;
+            }
+
+            // Check if we should retry
+            const shouldRetry =
+              attempt < maxRetries &&
+              (response.status ===
+                ModelResponseStatus.PROVIDER_UNAVAILABLE_ERROR ||
+                response.status === ModelResponseStatus.INTERNAL_ERROR ||
+                response.status === ModelResponseStatus.UNKNOWN_ERROR);
+
+            if (!shouldRetry) {
+              if (attempt === maxRetries) {
+                console.error(
+                  `Failed to generate persona context: Non-retryable response status: ${response.status}`,
+                );
+              }
+              break;
+            }
+
+            const delay = initialDelay * Math.pow(2, attempt);
+            console.log(
+              `Persona generation API error (${response.status}), retrying after ${delay}ms (attempt ${attempt + 1}/${maxRetries})`,
+            );
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          } catch (error) {
+            console.error(`Attempt ${attempt} threw error:`, error);
+            if (attempt < maxRetries) {
+              const delay = initialDelay * Math.pow(2, attempt);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            } else {
+              break;
+            }
+          }
+        }
+
+        if (!success) {
+          console.error(
+            `Failed to generate persona context for participant ${participant.privateId} after ${maxRetries} retries. Reverting to base promptContext.`,
+          );
+          await app.firestore().runTransaction(async (transaction) => {
+            const pRef = getFirestoreParticipantRef(
+              experimentId,
+              participant.privateId,
+            );
+            const pDoc = (
+              await transaction.get(pRef)
+            ).data() as ParticipantProfileExtended;
+            if (pDoc?.agentConfig) {
+              pDoc.connected = true;
+              pDoc.needsPersonaGeneration = false;
+              transaction.set(pRef, pDoc);
+              activeParticipant = pDoc;
+            }
+          });
+        }
+      }
+    }
+
     // Set up participant stage answers
-    initializeParticipantStageAnswers(event.params.experimentId, participant);
+    initializeParticipantStageAnswers(
+      event.params.experimentId,
+      activeParticipant,
+    );
 
     // Start making agent calls for participants with agent configs
-    startAgentParticipant(event.params.experimentId, participant);
+    startAgentParticipant(event.params.experimentId, activeParticipant);
   },
 );
 

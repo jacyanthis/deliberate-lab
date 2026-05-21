@@ -49,6 +49,7 @@ import {
   ApiKeyType,
   ParticipantPromptConfig,
   DEFAULT_AGENT_MODEL_SETTINGS,
+  VariableScope,
 } from '@deliberation-lab/utils';
 import {completeStageAsAgentParticipant} from './agent_participant.utils';
 import {
@@ -65,6 +66,7 @@ import {createCohortInternal} from './cohort.utils';
 import {sendSystemChatMessage} from './chat/chat.utils';
 import {createMediatorProfileForPersona} from './mediator.utils';
 import {sendInitialChatMessages} from './chat/chat.agent';
+import {generateVariablesForScope} from './variables.utils';
 
 import {app} from './app';
 
@@ -1199,12 +1201,16 @@ export async function completeParticipantTransfer(
     targetCohortId,
   );
 
-  const hasSpawningRequirement =
-    participant.isObserver ||
-    (participant.numOtherAgents && participant.numOtherAgents > 0);
+  const otherAgentGeneration = participant.otherAgentGeneration;
+  const numOtherAgents = otherAgentGeneration?.numOtherAgents ?? 0;
+  const otherAgentsPersonas =
+    otherAgentGeneration?.otherAgentsPersonas ?? false;
+
+  const hasSpawningRequirement = participant.isObserver || numOtherAgents > 0;
 
   if (hasSpawningRequirement) {
-    const numOtherAgents = participant.numOtherAgents ?? 0;
+    const experiment = await getFirestoreExperiment(experimentId);
+    if (!experiment) return response;
 
     const stages = (
       await app
@@ -1294,9 +1300,10 @@ export async function completeParticipantTransfer(
           .doc(nextStageId)
           .get();
         if (promptDoc.exists) {
-          promptsMap[persona.id] = (
-            promptDoc.data() as ParticipantPromptConfig
-          ).promptContext;
+          const promptConfig = promptDoc.data() as
+            | Record<string, unknown>
+            | undefined;
+          promptsMap[persona.id] = String(promptConfig?.promptContext ?? '');
         }
       }),
     );
@@ -1323,9 +1330,10 @@ export async function completeParticipantTransfer(
         timestamps: agentTimestamps,
         privateId: agentId,
         currentStageId: nextStageId,
-        connected: true,
+        connected: otherAgentsPersonas ? false : true,
         currentStatus: ParticipantStatus.IN_PROGRESS,
         isObserver: false,
+        needsPersonaGeneration: otherAgentsPersonas,
       });
 
       // Draw standard anonymous profile using a unique index offset and the cohort anonymity setting
@@ -1334,6 +1342,16 @@ export async function completeParticipantTransfer(
         agentProfile,
         isAnonymousCohort,
         profileType,
+      );
+
+      agentProfile.variableMap = await generateVariablesForScope(
+        experiment.variableConfigs ?? [],
+        {
+          scope: VariableScope.PARTICIPANT,
+          experimentId: experimentId,
+          cohortId: targetCohortId,
+          participantId: agentId,
+        },
       );
 
       if (participant.isObserver && agentProfile.agentConfig) {
