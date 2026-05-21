@@ -91,6 +91,7 @@ export const createParticipant = onCall(async (request) => {
     currentCohortId: data.cohortId,
     prolificId: data.prolificId,
     isObserver: data.isObserver ?? false,
+    otherAgentGeneration: data.otherAgentGeneration,
   });
 
   // Temporarily always mark participants as connected (PR #537)
@@ -181,7 +182,7 @@ export const createParticipant = onCall(async (request) => {
     // Hoist variables from variableMap's values strictly using a list of keys
     const HOIST_KEYS = [
       'isObserver',
-      'numOtherAgents',
+      'otherAgentGeneration',
       'swapMediator',
     ] as const;
 
@@ -194,15 +195,32 @@ export const createParticipant = onCall(async (request) => {
           if (treatment && typeof treatment === 'object') {
             for (const key of HOIST_KEYS) {
               if (treatment[key] !== undefined) {
-                const currentType = typeof pConfig[key];
-                if (currentType === 'boolean') {
-                  pConfig[key] =
-                    String(treatment[key]) === 'true' ||
-                    treatment[key] === true;
-                } else if (currentType === 'number') {
-                  pConfig[key] = Number(treatment[key]);
+                if (key === 'otherAgentGeneration') {
+                  const val = treatment[key];
+                  if (val && typeof val === 'object') {
+                    pConfig[key] = {
+                      numOtherAgents: Number(
+                        (val as Record<string, unknown>).numOtherAgents ?? 0,
+                      ),
+                      otherAgentsPersonas:
+                        String(
+                          (val as Record<string, unknown>).otherAgentsPersonas,
+                        ) === 'true' ||
+                        (val as Record<string, unknown>).otherAgentsPersonas ===
+                          true,
+                    };
+                  }
                 } else {
-                  pConfig[key] = String(treatment[key]);
+                  const currentType = typeof pConfig[key];
+                  if (currentType === 'boolean') {
+                    pConfig[key] =
+                      String(treatment[key]) === 'true' ||
+                      treatment[key] === true;
+                  } else if (currentType === 'number') {
+                    pConfig[key] = Number(treatment[key]);
+                  } else {
+                    pConfig[key] = String(treatment[key]);
+                  }
                 }
               }
             }
