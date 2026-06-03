@@ -26,6 +26,7 @@ export interface ProfileAgentConfig {
   agentId: string; // ID of agent persona used
   promptContext: string; // Additional text to concatenate to agent prompts
   modelSettings: AgentModelSettings;
+  needsPersonaGeneration?: boolean;
 }
 
 /** Reasoning level - mapped to provider-specific options by backend */

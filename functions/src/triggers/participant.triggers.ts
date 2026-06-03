@@ -57,7 +57,7 @@ export const onParticipantCreation = onDocumentCreated(
     let activeParticipant = participant;
 
     // 1. Asynchronously generate persona if flagged
-    if (participant.agentConfig && participant.needsPersonaGeneration) {
+    if (participant.agentConfig?.needsPersonaGeneration) {
       const experimentId = event.params.experimentId;
       const experimenterData =
         await getExperimenterDataFromExperiment(experimentId);
@@ -107,7 +107,7 @@ export const onParticipantCreation = onDocumentCreated(
                 if (pDoc?.agentConfig) {
                   pDoc.agentConfig.promptContext = response.text ?? '';
                   pDoc.connected = true;
-                  pDoc.needsPersonaGeneration = false;
+                  pDoc.agentConfig.needsPersonaGeneration = false;
                   transaction.set(pRef, pDoc);
                   activeParticipant = pDoc;
                 }
@@ -163,7 +163,7 @@ export const onParticipantCreation = onDocumentCreated(
             ).data() as ParticipantProfileExtended;
             if (pDoc?.agentConfig) {
               pDoc.connected = true;
-              pDoc.needsPersonaGeneration = false;
+              pDoc.agentConfig.needsPersonaGeneration = false;
               transaction.set(pRef, pDoc);
               activeParticipant = pDoc;
             }

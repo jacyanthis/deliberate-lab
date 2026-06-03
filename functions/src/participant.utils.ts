@@ -1329,6 +1329,7 @@ export async function completeParticipantTransfer(
           promptContext,
           modelSettings:
             persona?.defaultModelSettings ?? DEFAULT_AGENT_MODEL_SETTINGS,
+          needsPersonaGeneration: otherAgentsPersonas,
         },
         timestamps: agentTimestamps,
         privateId: agentId,
@@ -1336,7 +1337,6 @@ export async function completeParticipantTransfer(
         connected: otherAgentsPersonas ? false : true,
         currentStatus: ParticipantStatus.IN_PROGRESS,
         isObserver: false,
-        needsPersonaGeneration: otherAgentsPersonas,
       });
 
       // Draw standard anonymous profile using a unique index offset and the cohort anonymity setting
