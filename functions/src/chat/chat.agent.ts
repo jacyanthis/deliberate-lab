@@ -177,7 +177,6 @@ export async function createAgentChatMessageFromPrompt(
       user,
       promptConfig,
       retryDeadlineMs,
-      triggerChatId === '',
     );
     message = response.message;
     if (!message) {
