@@ -71,6 +71,7 @@ import {
   updateSurveyPerParticipantStageParticipantAnswerCallable,
   updateSurveyStageParticipantAnswerCallable,
   updateRankingStageParticipantAnswerCallable,
+  submitParticipantThoughtCallable,
 } from '../shared/callables';
 import {PROLIFIC_COMPLETION_URL_PREFIX} from '../shared/constants';
 import {
@@ -106,6 +107,7 @@ export class ParticipantService extends Service {
     {};
   @observable privateChatMap: Record<string, ChatMessage[]> = {};
   @observable alertMap: Record<string, AlertMessage> = {};
+  @observable scratchpadText = '';
 
   // Loading
   @observable unsubscribe: Unsubscribe[] = [];
@@ -119,6 +121,7 @@ export class ParticipantService extends Service {
 
   // Chat creation loading
   @observable isSendingChat = false;
+  @observable isSubmittingThought = false;
 
   @computed get isLoading() {
     return this.isProfileLoading || this.areAnswersLoading;
@@ -229,6 +232,10 @@ export class ParticipantService extends Service {
 
   @action setCurrentStageView(stageId: string | undefined) {
     this.currentStageViewId = stageId;
+  }
+
+  @action setScratchpadText(text: string) {
+    this.scratchpadText = text;
   }
 
   updateForRoute(
@@ -429,6 +436,7 @@ export class ParticipantService extends Service {
     this.answerMap = {};
     this.privateChatMap = {};
     this.alertMap = {};
+    this.scratchpadText = '';
     this.sp.participantAnswerService.reset();
   }
 
@@ -745,6 +753,46 @@ export class ParticipantService extends Service {
         },
       );
     }
+    return response;
+  }
+
+  /** Submit participant's private thoughts on the observation. */
+  async submitParticipantThought(text: string) {
+    if (!this.experimentId || !this.profile || !text || text.trim() === '') {
+      return {success: false};
+    }
+
+    if (this.isSubmittingThought) {
+      return {success: false};
+    }
+
+    this.isSubmittingThought = true;
+    let response = {success: false};
+
+    try {
+      response = await submitParticipantThoughtCallable(
+        this.sp.firebaseService.functions,
+        {
+          experimentId: this.experimentId,
+          participantId: this.profile.privateId,
+          stageId: this.profile.currentStageId,
+          text: text.trim(),
+        },
+      );
+
+      if (response.success) {
+        runInAction(() => {
+          this.scratchpadText = '';
+        });
+      }
+    } catch (error) {
+      console.error('Error submitting thought:', error);
+    } finally {
+      runInAction(() => {
+        this.isSubmittingThought = false;
+      });
+    }
+
     return response;
   }
 

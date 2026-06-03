@@ -4,6 +4,7 @@
 :host {
   @include common.flex-column;
   flex-shrink: 0;
+  height: 100%;
 }
 
 .top-layout {
@@ -20,6 +21,13 @@
   overflow-y: auto;
   padding: common.$main-content-padding;
   width: 240px;
+  height: 100%;
+  box-sizing: border-box;
+
+  &.with-scratchpad {
+    overflow-y: hidden; // Prevent overall scroll, let inner container scroll
+    gap: 0;
+  }
 }
 
 .panel-item {
@@ -102,4 +110,64 @@
 .chip {
   @include typescale.label-small;
   @include common.chip;
+}
+
+.scrollable-content {
+  @include common.flex-column;
+  gap: common.$spacing-large;
+  overflow-y: auto;
+  max-height: 70%;
+  flex-shrink: 0;
+}
+
+.scratchpad-container {
+  @include common.flex-column;
+  gap: common.$spacing-small;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  padding-top: common.$spacing-medium;
+  margin-top: common.$spacing-small;
+  flex-grow: 1;
+  flex-shrink: 0;
+  height: 0;
+}
+
+.scratchpad-container pr-textarea {
+  flex-grow: 1;
+  min-height: 120px;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.scratchpad-container pr-textarea::part(wrapper) {
+  flex-grow: 1;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.scratchpad-container pr-textarea::part(textarea) {
+  flex-grow: 1;
+  height: 100% !important;
+  box-sizing: border-box;
+  overflow-y: auto !important;
+}
+
+.scratchpad-title {
+  @include typescale.title-small;
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+
+.scratchpad-subtitle {
+  @include typescale.body-small;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--md-sys-color-outline);
+  margin-bottom: common.$spacing-small;
+}
+
+.scratchpad-submit-btn {
+  margin-top: common.$spacing-small;
+  align-self: flex-end;
 }

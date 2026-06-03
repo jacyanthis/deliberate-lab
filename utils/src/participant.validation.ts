@@ -218,3 +218,20 @@ export const AnonymousProfileSchema = Type.Object({
   repeat: Type.Number(),
   avatar: Type.String(),
 });
+
+// ************************************************************************* //
+// submitParticipantThought endpoint for participants                        //
+// ************************************************************************* //
+export const SubmitParticipantThoughtData = Type.Object(
+  {
+    experimentId: Type.String({minLength: 1}),
+    participantId: Type.String({minLength: 1}),
+    stageId: Type.String({minLength: 1}),
+    text: Type.String({minLength: 1}),
+  },
+  strict,
+);
+
+export type SubmitParticipantThoughtData = Static<
+  typeof SubmitParticipantThoughtData
+>;

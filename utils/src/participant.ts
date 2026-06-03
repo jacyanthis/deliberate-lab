@@ -1,3 +1,4 @@
+import {Timestamp} from 'firebase/firestore';
 import {ProfileAgentConfig} from './agent';
 import {MediatorProfile} from './mediator';
 import {UnifiedTimestamp, generateId} from './shared';
@@ -75,6 +76,13 @@ export interface AnonymousProfileMetadata {
   name: string;
   repeat: number; // e.g., if 1, then profile is Cat 2; if 2, then Cat 3
   avatar: string;
+}
+
+/** Participant observation thought structure. */
+export interface ParticipantThought {
+  id: string;
+  text: string;
+  timestamp: UnifiedTimestamp;
 }
 
 /** Participant profile available in private participants collection. */
@@ -165,6 +173,17 @@ export function createParticipantProfileBase(
     name: config.name ?? null,
     avatar: config.avatar ?? null,
     pronouns: config.pronouns ?? null,
+  };
+}
+
+/** Create participant thought. */
+export function createParticipantThought(
+  config: Partial<ParticipantThought> = {},
+): ParticipantThought {
+  return {
+    id: config.id ?? generateId(),
+    text: config.text ?? '',
+    timestamp: config.timestamp ?? Timestamp.now(),
   };
 }
 
