@@ -92,6 +92,7 @@ export const createParticipant = onCall(async (request) => {
     currentCohortId: data.cohortId,
     prolificId: data.prolificId,
     isObserver: data.isObserver ?? false,
+    hasRepresentative: data.hasRepresentative ?? false,
     otherAgentGeneration: data.otherAgentGeneration,
   });
 
@@ -183,6 +184,7 @@ export const createParticipant = onCall(async (request) => {
     // Hoist variables from variableMap's values strictly using a list of keys
     const HOIST_KEYS = [
       'isObserver',
+      'hasRepresentative',
       'numOtherAgents',
       'otherAgentsPersonas',
       'swapMediator',

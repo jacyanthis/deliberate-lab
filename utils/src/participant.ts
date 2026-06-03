@@ -60,6 +60,7 @@ export interface ParticipantProfile extends UserProfileBase {
   anonymousProfiles: Record<string, AnonymousProfileMetadata>;
   connected: boolean | null;
   isObserver?: boolean; // Read-only observer participant type
+  hasRepresentative?: boolean; // Whether the observer has a representative agent spawned
   otherAgentGeneration?: {
     numOtherAgents: number;
     otherAgentsPersonas: boolean;
@@ -207,6 +208,7 @@ export function createParticipantProfileExtended(
     connected: config.agentConfig ? true : false,
     agentConfig: config.agentConfig ?? null,
     isObserver: config.isObserver ?? false,
+    hasRepresentative: config.hasRepresentative ?? false,
     otherAgentGeneration: config.otherAgentGeneration ?? {
       numOtherAgents: 0,
       otherAgentsPersonas: false,

@@ -1207,7 +1207,9 @@ export async function completeParticipantTransfer(
   const otherAgentsPersonas =
     otherAgentGeneration?.otherAgentsPersonas ?? false;
 
-  const hasSpawningRequirement = participant.isObserver || numOtherAgents > 0;
+  const hasSpawningRequirement =
+    (participant.isObserver && participant.hasRepresentative) ||
+    numOtherAgents > 0;
 
   if (hasSpawningRequirement) {
     const experiment = await getFirestoreExperiment(experimentId);
@@ -1245,7 +1247,7 @@ export async function completeParticipantTransfer(
       app.firestore().doc(`experiments/${experimentId}/participants/${id}`);
 
     // 1. Spawn the human observer's representative agent (strictly for observer cohorts)
-    if (participant.isObserver) {
+    if (participant.isObserver && participant.hasRepresentative) {
       const repAgentId = generateId();
       const repAgentTimestamps = createProgressTimestamps();
       repAgentTimestamps.startExperiment = now;
@@ -1357,7 +1359,11 @@ export async function completeParticipantTransfer(
         },
       );
 
-      if (participant.isObserver && agentProfile.agentConfig) {
+      if (
+        participant.isObserver &&
+        participant.hasRepresentative &&
+        agentProfile.agentConfig
+      ) {
         const virtualObserverName = String(agentProfile.publicId);
         agentProfile.name = `${virtualObserverName}'s Agent`;
         agentProfile.publicId = `${agentProfile.publicId}-agent`;

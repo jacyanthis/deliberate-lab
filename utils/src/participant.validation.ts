@@ -152,6 +152,7 @@ export const CreateParticipantData = Type.Object(
     ),
     prolificId: Type.Optional(Type.Union([Type.Null(), Type.String()])),
     isObserver: Type.Optional(Type.Boolean()),
+    hasRepresentative: Type.Optional(Type.Boolean()),
     otherAgentGeneration: Type.Optional(
       Type.Object({
         numOtherAgents: Type.Number(),
