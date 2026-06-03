@@ -1246,12 +1246,14 @@ async function sendInitialPrivateChatMessages(
   // We need to send initial messages for each participant's private chat
 
   // Get all participants in this stage
-  const allParticipants = await getFirestoreActiveParticipants(
-    experimentId,
-    cohortId,
-    stageId,
-    false, // checkIsAgent = false to get all participants
-  );
+  const allParticipants = (
+    await getFirestoreActiveParticipants(
+      experimentId,
+      cohortId,
+      stageId,
+      false, // checkIsAgent = false to get all participants
+    )
+  ).filter((p) => !p.isObserver);
 
   // Get agent mediators
   const agentMediators = await getFirestoreActiveMediators(

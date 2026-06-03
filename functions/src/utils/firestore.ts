@@ -157,7 +157,10 @@ export async function getFirestoreActiveParticipants(
 
   const activeParticipants = (await query.get()).docs
     .map((doc) => doc.data() as ParticipantProfileExtended)
-    .filter((participant) => (checkIsAgent ? participant.agentConfig : true));
+    .filter((participant) => {
+      if (participant.isObserver) return false;
+      return checkIsAgent ? participant.agentConfig : true;
+    });
 
   return activeParticipants;
 }
