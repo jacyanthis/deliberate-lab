@@ -220,7 +220,8 @@ async function advanceTurnBasedChatIfCurrentParticipantLeft(
     getFirestoreActiveMediators(experimentId, cohortId, stageId, true),
   ]);
   const activeParticipants = allActiveParticipants.filter(
-    (p) => p.timestamps?.completedStages?.[stageId] === undefined,
+    (p) =>
+      p.timestamps?.completedStages?.[stageId] === undefined && !p.isObserver,
   );
   const activeIds = new Set([
     ...activeMediators.map((mediator) => mediator.publicId),

@@ -138,8 +138,9 @@ export const onPublicChatMessageCreated = onDocumentCreated(
         let currentTurnParticipantId = chatPublicData.currentTurnParticipantId;
         let cycleIndex = chatPublicData.cycleIndex ?? 0;
 
-        // Get active IDs for validation and filtering. Filter out completed/booted/timed-out participants.
+        // Get active IDs for validation and filtering. Filter out completed/booted/timed-out participants and observers.
         const activeParticipants = allParticipants.filter((p) => {
+          if (p.isObserver) return false;
           if (
             p.currentCohortId !== undefined &&
             p.currentCohortId !== event.params.cohortId

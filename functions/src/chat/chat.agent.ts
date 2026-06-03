@@ -701,7 +701,12 @@ export async function skipTimedOutTurnBasedAgentTurn(
       getFirestoreStagePublicData(experimentId, cohortId, stage.id) as Promise<
         ChatStagePublicData | undefined
       >,
-      getFirestoreActiveParticipants(experimentId, cohortId, stage.id, false),
+      getFirestoreActiveParticipants(
+        experimentId,
+        cohortId,
+        stage.id,
+        false,
+      ).then((participants) => participants.filter((p) => !p.isObserver)),
       getFirestoreActiveMediators(experimentId, cohortId, stage.id, true),
       getFirestorePublicStageChatMessages(experimentId, cohortId, stage.id),
     ]);
@@ -1077,6 +1082,7 @@ async function sendInitialGroupChatMessages(
           .map((m) => m.publicId)
           .filter((id) => !existingIds.has(id));
         const newParticipantIds = allParticipants
+          .filter((p) => !p.isObserver)
           .map((p) => p.publicId)
           .filter((id) => !existingIds.has(id));
 
@@ -1110,7 +1116,9 @@ async function sendInitialGroupChatMessages(
 
     // If uninitialized
     if (!chatPublicData || !chatPublicData.currentTurnParticipantId) {
-      const allPublicParticipantIds = allParticipants.map((p) => p.publicId);
+      const allPublicParticipantIds = allParticipants
+        .filter((p) => !p.isObserver)
+        .map((p) => p.publicId);
       const allMediatorIds = agentMediators.map((m) => m.publicId);
 
       // Shuffle participants with seed
