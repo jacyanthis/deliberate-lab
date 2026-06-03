@@ -182,7 +182,8 @@ export const createParticipant = onCall(async (request) => {
     // Hoist variables from variableMap's values strictly using a list of keys
     const HOIST_KEYS = [
       'isObserver',
-      'otherAgentGeneration',
+      'numOtherAgents',
+      'otherAgentsPersonas',
       'swapMediator',
     ] as const;
 
@@ -195,20 +196,23 @@ export const createParticipant = onCall(async (request) => {
           if (treatment && typeof treatment === 'object') {
             for (const key of HOIST_KEYS) {
               if (treatment[key] !== undefined) {
-                if (key === 'otherAgentGeneration') {
-                  const val = treatment[key];
-                  if (val && typeof val === 'object') {
-                    pConfig[key] = {
-                      numOtherAgents: Number(
-                        (val as Record<string, unknown>).numOtherAgents ?? 0,
-                      ),
-                      otherAgentsPersonas:
-                        String(
-                          (val as Record<string, unknown>).otherAgentsPersonas,
-                        ) === 'true' ||
-                        (val as Record<string, unknown>).otherAgentsPersonas ===
-                          true,
+                if (key === 'numOtherAgents' || key === 'otherAgentsPersonas') {
+                  if (!pConfig['otherAgentGeneration']) {
+                    pConfig['otherAgentGeneration'] = {
+                      numOtherAgents: 0,
+                      otherAgentsPersonas: false,
                     };
+                  }
+                  const gen = pConfig['otherAgentGeneration'] as {
+                    numOtherAgents: number;
+                    otherAgentsPersonas: boolean;
+                  };
+                  if (key === 'numOtherAgents') {
+                    gen.numOtherAgents = Number(treatment[key]);
+                  } else if (key === 'otherAgentsPersonas') {
+                    gen.otherAgentsPersonas =
+                      String(treatment[key]) === 'true' ||
+                      treatment[key] === true;
                   }
                 } else {
                   const currentType = typeof pConfig[key];
