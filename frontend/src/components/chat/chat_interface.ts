@@ -91,7 +91,8 @@ export class ChatInterface extends MobxLitElement {
     // avoid a stale "Waiting for X" flash immediately after X just spoke.
     const messages = this.cohortService.chatMap[this.stage.id] ?? [];
     const latest = messages[messages.length - 1];
-    if (latest?.senderId === id) return null;
+    if (latest?.senderId === id && data.turnOrder && data.turnOrder.length > 1)
+      return null;
 
     const isMyTurn =
       !this.participantService.profile?.agentConfig &&

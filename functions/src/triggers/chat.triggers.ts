@@ -79,9 +79,12 @@ export const onPublicChatMessageCreated = onDocumentCreated(
       event.params.cohortId,
       stage.id,
       false, // Get all participants, not just agents
+      true, // Include observers
     );
 
-    const allParticipantIds = allParticipants.map((p) => p.privateId);
+    const allParticipantIds = allParticipants
+      .filter((p) => !p.isObserver)
+      .map((p) => p.privateId);
 
     const chatStage = stage as ChatStageConfig;
     const chatPublicData = publicStageData as ChatStagePublicData;
@@ -160,7 +163,26 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           return !isExplicitlyInactive && !isExplicitlyCompleted;
         });
 
-        if (activeParticipants.length === 0) {
+        const hasHumanObserver = allParticipants.some((p) => {
+          if (!p.isObserver) return false;
+          if (
+            p.currentCohortId !== undefined &&
+            p.currentCohortId !== event.params.cohortId
+          )
+            return false;
+          if (
+            p.currentStageId !== undefined &&
+            p.currentStageId !== event.params.stageId
+          )
+            return false;
+          const isExplicitlyInactive =
+            p.currentStatus !== undefined &&
+            p.currentStatus !== ParticipantStatus.IN_PROGRESS &&
+            p.currentStatus !== ParticipantStatus.ATTENTION_CHECK;
+          return !isExplicitlyInactive && !p.agentConfig;
+        });
+
+        if (activeParticipants.length === 0 && !hasHumanObserver) {
           transaction.set(
             publicStageDataRef,
             {
@@ -515,9 +537,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
             await createAgentChatMessageFromPrompt(
               event.params.experimentId,
               event.params.cohortId,
-              mediator
-                ? allParticipants.map((p) => p.privateId)
-                : [agent.privateId],
+              mediator ? allParticipantIds : [agent.privateId],
               stage.id,
               '', // empty triggerChatId indicates initial message
               agent,
@@ -532,7 +552,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           await createAgentChatMessageFromPrompt(
             event.params.experimentId,
             event.params.cohortId,
-            allParticipants.map((p) => p.privateId),
+            allParticipantIds,
             stage.id,
             finalTriggerChatId,
             nextMediatorHolder,

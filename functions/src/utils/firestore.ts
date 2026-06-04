@@ -134,6 +134,7 @@ export async function getFirestoreActiveParticipants(
   cohortId: string,
   stageId: string | null = null, // if null, can be in any stage
   checkIsAgent = false, // whether to check if participant is agent
+  includeObservers = false,
 ) {
   // TODO: Use isActiveParticipant utils function?
   const activeStatuses = [
@@ -158,7 +159,7 @@ export async function getFirestoreActiveParticipants(
   const activeParticipants = (await query.get()).docs
     .map((doc) => doc.data() as ParticipantProfileExtended)
     .filter((participant) => {
-      if (participant.isObserver) return false;
+      if (participant.isObserver && !includeObservers) return false;
       return checkIsAgent ? participant.agentConfig : true;
     });
 
