@@ -1,0 +1,44 @@
+{
+  "status": {
+    "1ce4c139-a63b-48e0-995d-b5f2f2cf5d0a": {
+      "6cb2f5f6-7290-4323-91df-be6dde414ab8": {
+        "connected": false,
+        "last_changed": 1778782014037
+      }
+    },
+    "29d3a16b-8bbf-4f9c-96f5-261fe889a4c3": {
+      "b4e38f1f-b795-40a2-b84a-c91a6ac7bea0": {
+        "connected": false,
+        "last_changed": 1778782545239
+      },
+      "c83a001c-b0ba-47b1-b971-585fbb1c3a8b": {
+        "connected": false,
+        "last_changed": 1778790154390
+      },
+      "f2ac9ffb-0755-48c3-9e29-f05c7b0fbc99": {
+        "connected": false,
+        "last_changed": 1778790120662
+      }
+    },
+    "a359c351-6b9d-4285-999c-065f73dbc207": {
+      "02313ae2-b75b-4ec7-b4a6-1ba66b288d6c": {
+        "connected": false,
+        "last_changed": 1778784015498
+      },
+      "44e13b8a-343a-4205-93e1-dbba8f196d07": {
+        "connected": false,
+        "last_changed": 1778782545619
+      },
+      "b6719fcb-90b9-43bd-a66c-510dfae24467": {
+        "connected": false,
+        "last_changed": 1778790226188
+      }
+    },
+    "a896a48e-099a-4186-a525-92cd05c041c9": {
+      "754de146-2637-49a4-88aa-275a478f6bf0": {
+        "connected": false,
+        "last_changed": 1778782017065
+      }
+    }
+  }
+}

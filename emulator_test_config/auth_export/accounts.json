@@ -3,9 +3,10 @@
   "users": [
     {
       "localId": "R7dWvQjkuhsCJgplJ3WtnUDsD9kR",
+      "createdAt": "1778781970927",
+      "lastLoginAt": "1780700924237",
       "displayName": "Experimenter",
-      "email": "experimenter@google.com",
-      "emailVerified": true,
+      "customAttributes": "{\"role\": \"experimenter\"}",
       "providerUserInfo": [
         {
           "providerId": "google.com",
@@ -15,13 +16,16 @@
           "email": "experimenter@google.com"
         }
       ],
-      "customAttributes": "{\"role\": \"experimenter\"}"
+      "validSince": "1780700818",
+      "email": "experimenter@google.com",
+      "emailVerified": true,
+      "disabled": false,
+      "lastRefreshAt": "2026-06-06T18:07:48.097Z"
     },
     {
       "localId": "e5bXFO0SONUk6VYbiuThBLjrWUfL",
+      "createdAt": "1778781970927",
       "displayName": "Not Experimenter",
-      "email": "not-experimenter@google.com",
-      "emailVerified": true,
       "providerUserInfo": [
         {
           "providerId": "google.com",
@@ -30,7 +34,11 @@
           "displayName": "Not Experimenter",
           "email": "not-experimenter@google.com"
         }
-      ]
+      ],
+      "validSince": "1780700818",
+      "email": "not-experimenter@google.com",
+      "emailVerified": true,
+      "disabled": false
     }
   ]
 }
