@@ -10,8 +10,10 @@ import {customElement, property, state} from 'lit/decorators.js';
 import {
   ChatStageConfig,
   ChatStagePublicData,
+  PrivateChatStageConfig,
   StageConfig,
   StageKind,
+  UserType,
 } from '@deliberation-lab/utils';
 import {core} from '../../core/core';
 import {AuthService} from '../../services/auth.service';
@@ -69,7 +71,13 @@ export class ChatInterface extends MobxLitElement {
   }
 
   @computed get isMyTurn() {
-    if (!this.stage || this.stage.kind !== StageKind.CHAT) return true;
+    if (!this.stage) return true;
+    if (this.stage.kind === StageKind.PRIVATE_CHAT) {
+      const config = this.stage as PrivateChatStageConfig;
+      if (!config.isTurnBasedChatGroupStyle) return true;
+      return this.turnIndicatorState?.isMyTurn ?? false;
+    }
+    if (this.stage.kind !== StageKind.CHAT) return true;
     const config = this.stage as ChatStageConfig;
     if (!config.isTurnBased) return true;
 
@@ -77,7 +85,11 @@ export class ChatInterface extends MobxLitElement {
   }
 
   @computed get turnIndicatorState() {
-    if (!this.stage || this.stage.kind !== StageKind.CHAT) return null;
+    if (!this.stage) return null;
+    if (this.stage.kind === StageKind.PRIVATE_CHAT) {
+      return this.privateChatTurnIndicatorState;
+    }
+    if (this.stage.kind !== StageKind.CHAT) return null;
     const config = this.stage as ChatStageConfig;
     if (!config.isTurnBased) return null;
 
@@ -127,6 +139,44 @@ export class ChatInterface extends MobxLitElement {
       isMediator: false,
       id,
       isMyTurn,
+    };
+  }
+
+  @computed private get privateChatTurnIndicatorState() {
+    if (!this.stage || this.stage.kind !== StageKind.PRIVATE_CHAT) return null;
+    const config = this.stage as PrivateChatStageConfig;
+    if (!config.isTurnBasedChatGroupStyle) return null;
+
+    // Turn alternates between the participant and the mediator, with the
+    // mediator always going first. Errors don't count toward turn-taking
+    // (they unblock the participant to retry).
+    const messages = (
+      this.participantService.privateChatMap[this.stage.id] ?? []
+    ).filter((m) => !m.isError);
+    const publicId = this.participantService.profile?.publicId ?? '';
+    const latest = messages[messages.length - 1];
+    const isMyTurn = !!latest && latest.senderId !== publicId;
+
+    if (isMyTurn) {
+      const profile = this.participantService.profile;
+      return {
+        name: profile?.name ?? '',
+        avatar: profile?.avatar ?? '',
+        isMediator: false,
+        id: publicId,
+        isMyTurn: true,
+      };
+    }
+
+    const lastMediator = [...messages]
+      .reverse()
+      .find((m) => m.type === UserType.MEDIATOR);
+    return {
+      name: lastMediator?.profile?.name ?? 'Mediator',
+      avatar: lastMediator?.profile?.avatar ?? '🤖',
+      isMediator: true,
+      id: lastMediator?.senderId ?? 'mediator',
+      isMyTurn: false,
     };
   }
 

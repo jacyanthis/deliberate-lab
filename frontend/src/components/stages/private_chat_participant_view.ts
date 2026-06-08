@@ -138,7 +138,9 @@ export class PrivateChatView extends MobxLitElement {
     return html`
       <chat-interface .stage=${this.stage} .disableInput=${isDisabledInput()}>
         ${chatMessages.map((message) => this.renderChatMessage(message))}
-        ${isWaitingForResponse && !isConversationOver
+        ${isWaitingForResponse &&
+        !isConversationOver &&
+        !this.stage.isTurnBasedChatGroupStyle
           ? this.renderAgentIndicator(chatMessages)
           : nothing}
         ${isConversationOver && minTimeMet
