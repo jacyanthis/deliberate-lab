@@ -100,3 +100,24 @@ async function handleTimeElapsed(
     discussionEndTimestamp: Timestamp.now(),
   });
 }
+
+/**
+ * End the discussion globally because the cohort hit the maximum total
+ * message count for the stage. Sends a system message and writes the
+ * discussionEndTimestamp so subsequent chat triggers stop firing agents.
+ */
+export async function handleMaxMessagesReached(
+  experimentId: string,
+  cohortId: string,
+  stageId: string,
+) {
+  await sendSystemChatMessage(
+    experimentId,
+    cohortId,
+    stageId,
+    'The message limit for this stage has been reached; you can no longer respond.',
+  );
+  await getFirestoreStagePublicDataRef(experimentId, cohortId, stageId).update({
+    discussionEndTimestamp: Timestamp.now(),
+  });
+}

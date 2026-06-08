@@ -27,6 +27,12 @@ export interface ChatStageConfig extends BaseStageConfig {
   timeLimitInMinutes: number | null; // Maximum duration in minutes (integer), or null if no limit.
   timeMinimumInMinutes: number | null; // Minimum time participants must stay in minutes (integer), or null if no minimum.
   isTurnBased?: boolean; // Whether the conversation is turn-based
+  // Minimum total messages from all participants/mediators combined before
+  // a participant is eligible to advance. 0 = no minimum.
+  minNumberOfMessages?: number;
+  // Maximum total messages from all participants/mediators combined; the
+  // discussion ends globally for the whole cohort once reached. null = no cap.
+  maxNumberOfMessages?: number | null;
 }
 
 /** Chat discussion. */
@@ -120,6 +126,8 @@ export function createChatStage(
     timeLimitInMinutes: config.timeLimitInMinutes ?? null,
     timeMinimumInMinutes: config.timeMinimumInMinutes ?? null,
     isTurnBased: config.isTurnBased ?? false,
+    minNumberOfMessages: config.minNumberOfMessages ?? 0,
+    maxNumberOfMessages: config.maxNumberOfMessages ?? null,
   };
 }
 

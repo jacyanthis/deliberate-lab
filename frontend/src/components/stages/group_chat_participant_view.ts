@@ -27,6 +27,7 @@ import {
   ChatStageConfig,
   DiscussionItem,
   StageKind,
+  UserType,
   getTimeElapsed,
 } from '@deliberation-lab/utils';
 
@@ -61,7 +62,27 @@ export class GroupChatView extends MobxLitElement {
       stage.id
     ] as ChatStagePublicData;
     if (!stageData) return;
-    return Boolean(stageData.discussionEndTimestamp);
+    if (stageData.discussionEndTimestamp) return true;
+    const max = (stage as ChatStageConfig).maxNumberOfMessages;
+    if (max != null && this.cohortMessageCount() >= max) return true;
+    return false;
+  }
+
+  /**
+   * Total non-system, non-error messages sent in the cohort's public chat.
+   * Used to enforce cohort-wide min/max message limits.
+   */
+  private cohortMessageCount(): number {
+    const stageId = this.participantService.currentStageViewId ?? '';
+    const messages = this.cohortService.chatMap[stageId] ?? [];
+    return messages.filter((m) => m.type !== UserType.SYSTEM && !m.isError)
+      .length;
+  }
+
+  private isMinimumMessagesMet() {
+    if (!this.stage) return true;
+    const min = this.stage.minNumberOfMessages ?? 0;
+    return this.cohortMessageCount() >= min;
   }
 
   private renderChatHistory(currentDiscussionId: string | null) {
@@ -255,7 +276,7 @@ export class GroupChatView extends MobxLitElement {
     );
 
     // Determine if Next Stage button should be disabled
-    const disableNext = !this.isMinimumTimeMet;
+    const disableNext = !this.isMinimumTimeMet || !this.isMinimumMessagesMet();
 
     const renderProgress = () => {
       if (!this.stage?.progress.showParticipantProgress) {

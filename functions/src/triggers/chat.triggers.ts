@@ -26,7 +26,7 @@ import {
   canSendAgentChatMessage,
 } from '../chat/chat.agent';
 import {sendErrorPrivateChatMessage} from '../chat/chat.utils';
-import {startTimeElapsed} from '../stages/chat.time';
+import {handleMaxMessagesReached, startTimeElapsed} from '../stages/chat.time';
 import {getStructuredPromptConfig} from '../structured_prompt.utils';
 import {app} from '../app';
 
@@ -58,14 +58,37 @@ export const onPublicChatMessageCreated = onDocumentCreated(
 
     // Take action for specific stages
     switch (stage.kind) {
-      case StageKind.CHAT:
+      case StageKind.CHAT: {
         // Start tracking elapsed time
         startTimeElapsed(
           event.params.experimentId,
           event.params.cohortId,
           publicStageData as ChatStagePublicData,
         );
+        // End the discussion globally if the cohort-wide message cap is reached.
+        const maxMessages = (stage as ChatStageConfig).maxNumberOfMessages;
+        const alreadyEnded = (publicStageData as ChatStagePublicData)
+          .discussionEndTimestamp;
+        if (maxMessages != null && !alreadyEnded) {
+          const allChatMessages = await getFirestorePublicStageChatMessages(
+            event.params.experimentId,
+            event.params.cohortId,
+            event.params.stageId,
+          );
+          const cohortMessageCount = allChatMessages.filter(
+            (m) => m.type !== UserType.SYSTEM && !m.isError,
+          ).length;
+          if (cohortMessageCount >= maxMessages) {
+            await handleMaxMessagesReached(
+              event.params.experimentId,
+              event.params.cohortId,
+              event.params.stageId,
+            );
+            return;
+          }
+        }
         break;
+      }
       case StageKind.SALESPERSON:
         // TODO: Add API calls for salesperson back in
         return; // Don't call any of the usual chat functions
