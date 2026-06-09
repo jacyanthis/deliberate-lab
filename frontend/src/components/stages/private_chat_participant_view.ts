@@ -9,6 +9,7 @@ import {customElement, property} from 'lit/decorators.js';
 
 import {core} from '../../core/core';
 import {ParticipantService} from '../../services/participant.service';
+import {CohortService} from '../../services/cohort.service';
 
 import {
   ChatMessage,
@@ -27,6 +28,7 @@ export class PrivateChatView extends MobxLitElement {
   static override styles: CSSResultGroup = [styles];
 
   private readonly participantService = core.getService(ParticipantService);
+  private readonly cohortService = core.getService(CohortService);
 
   @property() stage: PrivateChatStageConfig | undefined = undefined;
 
@@ -165,14 +167,20 @@ export class PrivateChatView extends MobxLitElement {
   }
 
   private renderAgentIndicator(chatMessages: ChatMessage[]) {
-    // Get avatar/color from last mediator message
-    const lastMediator = [...chatMessages]
+    const lastMediatorMsg = [...chatMessages]
       .reverse()
       .find((msg) => msg.type === UserType.MEDIATOR);
-    const avatar = lastMediator?.profile?.avatar;
-    const color = lastMediator
-      ? getHashBasedColor(lastMediator.senderId ?? '')
-      : undefined;
+    const assignedMediator = this.cohortService.getMediatorsForStage(
+      this.stage?.id ?? '',
+    )[0];
+
+    const avatar = lastMediatorMsg?.profile?.avatar ?? assignedMediator?.avatar;
+    const color =
+      (lastMediatorMsg?.senderId ?? assignedMediator?.publicId)
+        ? getHashBasedColor(
+            lastMediatorMsg?.senderId ?? assignedMediator?.publicId ?? '',
+          )
+        : undefined;
 
     const renderCancelButton = () => {
       if (this.stage?.preventCancellation) {

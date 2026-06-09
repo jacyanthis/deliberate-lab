@@ -168,14 +168,20 @@ export class ChatInterface extends MobxLitElement {
       };
     }
 
-    const lastMediator = [...messages]
+    const lastMediatorMsg = [...messages]
       .reverse()
       .find((m) => m.type === UserType.MEDIATOR);
+    const assignedMediator = this.cohortService.getMediatorsForStage(
+      this.stage.id,
+    )[0];
+
     return {
-      name: lastMediator?.profile?.name ?? 'Mediator',
-      avatar: lastMediator?.profile?.avatar ?? '🤖',
+      name:
+        lastMediatorMsg?.profile?.name ?? assignedMediator?.name ?? 'Mediator',
+      avatar:
+        lastMediatorMsg?.profile?.avatar ?? assignedMediator?.avatar ?? '🤖',
       isMediator: true,
-      id: lastMediator?.senderId ?? 'mediator',
+      id: lastMediatorMsg?.senderId ?? assignedMediator?.publicId ?? 'mediator',
       isMyTurn: false,
     };
   }
