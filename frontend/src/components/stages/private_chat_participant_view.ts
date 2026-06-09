@@ -108,7 +108,8 @@ export class PrivateChatView extends MobxLitElement {
     // Min turns takes precedence: conversation stays open until min turns is met,
     // even if max time has elapsed.
     const isConversationOver =
-      maxTurnsReached || (maxTimeReached && minTurnsMet);
+      (maxTurnsReached && !isWaitingForResponse) ||
+      (maxTimeReached && minTurnsMet);
 
     // Disable input if turn-taking is set and latest message
     // is from participant OR if conversation is over

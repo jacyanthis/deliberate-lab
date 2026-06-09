@@ -147,6 +147,10 @@ export class ChatInterface extends MobxLitElement {
       const maxTurnsReached =
         maxTurns !== null && participantMessageCount >= maxTurns;
 
+      const isWaitingForResponse =
+        chatMessages.length > 0 &&
+        chatMessages[chatMessages.length - 1].senderId === publicId;
+
       const discussionStartTimestamp =
         chatMessages.length > 0 ? chatMessages[0].timestamp : null;
       const elapsedMinutes = discussionStartTimestamp
@@ -163,7 +167,10 @@ export class ChatInterface extends MobxLitElement {
         : participantMessageCount >=
           (this.stage as PrivateChatStageConfig).minNumberOfTurns;
 
-      return maxTurnsReached || (maxTimeReached && minTurnsMet);
+      return (
+        (maxTurnsReached && !isWaitingForResponse) ||
+        (maxTimeReached && minTurnsMet)
+      );
     }
 
     if (this.stage.kind === StageKind.CHAT) {
