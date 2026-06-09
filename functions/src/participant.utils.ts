@@ -1257,7 +1257,7 @@ export async function completeParticipantTransfer(
 
       const repAgentProfile = createParticipantProfileExtended({
         currentCohortId: targetCohortId,
-        name: `${participant.publicId}'s Agent`,
+        name: `${participant.name || participant.publicId}'s Agent`,
         avatar: '🤖',
         agentConfig: {
           agentId: repAgentId,
@@ -1364,7 +1364,9 @@ export async function completeParticipantTransfer(
         participant.hasRepresentative &&
         agentProfile.agentConfig
       ) {
-        const virtualObserverName = String(agentProfile.publicId);
+        const virtualObserverName = String(
+          agentProfile.name || agentProfile.publicId,
+        );
         agentProfile.name = `${virtualObserverName}'s Agent`;
         agentProfile.publicId = `${agentProfile.publicId}-agent`;
         agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${virtualObserverName}.`;

@@ -51,8 +51,8 @@ import {
   prettyPrintErrors,
 } from './utils/validation';
 
-const formatAgentName = (publicId: string) => {
-  return String(publicId || 'Agent') + "'s Agent";
+const formatAgentName = (nameOrPublicId: string) => {
+  return String(nameOrPublicId || 'Agent') + "'s Agent";
 };
 
 // ************************************************************************* //
@@ -256,7 +256,9 @@ export const createParticipant = onCall(async (request) => {
 
     // If the new participant is an agent and there's an observer in the cohort, rename them
     if (participantConfig.agentConfig && hasObserver) {
-      participantConfig.name = formatAgentName(participantConfig.publicId);
+      participantConfig.name = formatAgentName(
+        participantConfig.name || participantConfig.publicId,
+      );
     }
 
     // Write new participant document (All writes happen at the end!)
