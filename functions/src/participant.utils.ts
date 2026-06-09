@@ -1372,60 +1372,60 @@ export async function completeParticipantTransfer(
 
       transaction.set(getParticipantRef(agentId), agentProfile);
     }
+  }
 
-    // 3. Dynamically swap the mediator in the cohort if specified
-    if (participant.swapMediator && participant.swapMediator.trim() !== '') {
-      const targetMediatorIdentifier = participant.swapMediator;
+  // 3. Dynamically swap the mediator in the cohort if specified
+  if (participant.swapMediator && participant.swapMediator.trim() !== '') {
+    const targetMediatorIdentifier = participant.swapMediator;
 
-      const agentMediators = await app
+    const agentMediators = await app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('agentMediators')
+      .get();
+
+    const matchingDoc = agentMediators.docs.find((doc) => {
+      const persona = doc.data() as AgentPersonaConfig;
+      return (
+        persona.id === targetMediatorIdentifier ||
+        persona.name === targetMediatorIdentifier ||
+        persona.defaultProfile?.name === targetMediatorIdentifier
+      );
+    });
+
+    if (matchingDoc) {
+      const matchingPersona = matchingDoc.data() as AgentPersonaConfig;
+      const existingMediatorsQuery = await app
         .firestore()
         .collection('experiments')
         .doc(experimentId)
-        .collection('agentMediators')
+        .collection('mediators')
+        .where('currentCohortId', '==', targetCohortId)
         .get();
 
-      const matchingDoc = agentMediators.docs.find((doc) => {
-        const persona = doc.data() as AgentPersonaConfig;
-        return (
-          persona.id === targetMediatorIdentifier ||
-          persona.name === targetMediatorIdentifier ||
-          persona.defaultProfile?.name === targetMediatorIdentifier
-        );
-      });
-
-      if (matchingDoc) {
-        const matchingPersona = matchingDoc.data() as AgentPersonaConfig;
-        const existingMediatorsQuery = await app
-          .firestore()
-          .collection('experiments')
-          .doc(experimentId)
-          .collection('mediators')
-          .where('currentCohortId', '==', targetCohortId)
-          .get();
-
-        // Delete existing mediators in target cohort
-        for (const doc of existingMediatorsQuery.docs) {
-          transaction.delete(doc.ref);
-        }
-
-        // Create the new mediator
-        const newMediator = await createMediatorProfileForPersona(
-          experimentId,
-          targetCohortId,
-          matchingPersona,
-        );
-        newMediator.privateId = `mediator-${targetCohortId}-${matchingPersona.id}`;
-        newMediator.publicId = matchingPersona.id.substring(0, 8);
-
-        const newMediatorDoc = app
-          .firestore()
-          .collection('experiments')
-          .doc(experimentId)
-          .collection('mediators')
-          .doc(newMediator.privateId);
-
-        transaction.set(newMediatorDoc, newMediator);
+      // Delete existing mediators in target cohort
+      for (const doc of existingMediatorsQuery.docs) {
+        transaction.delete(doc.ref);
       }
+
+      // Create the new mediator
+      const newMediator = await createMediatorProfileForPersona(
+        experimentId,
+        targetCohortId,
+        matchingPersona,
+      );
+      newMediator.privateId = `mediator-${targetCohortId}-${matchingPersona.id}`;
+      newMediator.publicId = matchingPersona.id.substring(0, 8);
+
+      const newMediatorDoc = app
+        .firestore()
+        .collection('experiments')
+        .doc(experimentId)
+        .collection('mediators')
+        .doc(newMediator.privateId);
+
+      transaction.set(newMediatorDoc, newMediator);
     }
   }
 

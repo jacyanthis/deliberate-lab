@@ -8,6 +8,8 @@ import {ParticipantAnswerService} from '../../services/participant.answer';
 import {ParticipantService} from '../../services/participant.service';
 import {ExperimentService} from '../../services/experiment.service';
 
+import {StageKind} from '@deliberation-lab/utils';
+
 import {styles} from './chat_input.scss';
 
 /** Chat input component */
@@ -80,7 +82,10 @@ export class ChatInputComponent extends MobxLitElement {
       return true;
     };
 
-    const isObserver = this.participantService.profile?.isObserver === true;
+    const stage = this.experimentService.getStage(this.stageId);
+    const isPrivateChat = stage?.kind === StageKind.PRIVATE_CHAT;
+    const isObserver =
+      !isPrivateChat && this.participantService.profile?.isObserver === true;
     const placeholderText = isObserver
       ? 'You are observing this discussion and cannot send messages.'
       : 'Send message';
