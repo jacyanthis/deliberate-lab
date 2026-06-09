@@ -3,6 +3,7 @@ import {
   Experiment,
   ParticipantProfileExtended,
   ParticipantStatus,
+  StageKind,
 } from '@deliberation-lab/utils';
 import {completeStageAsAgentParticipant} from '../agent_participant.utils';
 import {sendInitialChatMessages} from '../chat/chat.agent';
@@ -10,6 +11,7 @@ import {
   getFirestoreCohort,
   getFirestoreParticipant,
   getFirestoreParticipantRef,
+  getFirestoreStage,
 } from '../utils/firestore';
 import {app} from '../app';
 
@@ -37,11 +39,18 @@ export const updateAgentParticipant = onDocumentUpdated(
         experimentId,
         after.currentCohortId,
       );
+      const stage = await getFirestoreStage(experimentId, after.currentStageId);
 
       // Check if the stage is unlocked before sending initial messages
       // This prevents sending messages for stages that are gated by "waiting"
-      // where all participants must be on the current stage first
-      if (cohort?.stageUnlockMap[after.currentStageId]) {
+      // where all participants must be on the current stage first.
+      // Exception: Private Chat messages are scoped to the individual participant
+      // and do not need to wait for the cohort to be unlocked. Observers testing
+      // the experiment also bypass the waiting phase.
+      const isStageUnlocked = cohort?.stageUnlockMap[after.currentStageId];
+      const isPrivateChat = stage?.kind === StageKind.PRIVATE_CHAT;
+
+      if (isStageUnlocked || isPrivateChat || after.isObserver) {
         await sendInitialChatMessages(
           experimentId,
           after.currentCohortId,
