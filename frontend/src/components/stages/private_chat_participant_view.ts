@@ -81,11 +81,10 @@ export class PrivateChatView extends MobxLitElement {
       chatMessages[chatMessages.length - 1].senderId === publicId &&
       !this.responseTimeout.timedOut;
 
-    // Check if max number of turns reached (but only after response received)
+    // Check if max number of turns reached
     const maxTurnsReached =
       this.stage.maxNumberOfTurns !== null &&
-      participantMessageCount >= this.stage.maxNumberOfTurns &&
-      !isWaitingForResponse;
+      participantMessageCount >= this.stage.maxNumberOfTurns;
 
     const discussionStartTimestamp =
       chatMessages.length > 0 ? chatMessages[0].timestamp : null;
