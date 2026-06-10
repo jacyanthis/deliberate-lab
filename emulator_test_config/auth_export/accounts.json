@@ -4,7 +4,7 @@
     {
       "localId": "R7dWvQjkuhsCJgplJ3WtnUDsD9kR",
       "createdAt": "1778781970927",
-      "lastLoginAt": "1781034807664",
+      "lastLoginAt": "1781066888167",
       "displayName": "Experimenter",
       "customAttributes": "{\"role\": \"experimenter\"}",
       "providerUserInfo": [
@@ -16,11 +16,11 @@
           "email": "experimenter@google.com"
         }
       ],
-      "validSince": "1781034730",
+      "validSince": "1781066815",
       "email": "experimenter@google.com",
       "emailVerified": true,
       "disabled": false,
-      "lastRefreshAt": "2026-06-09T19:53:27.664Z"
+      "lastRefreshAt": "2026-06-10T04:48:08.167Z"
     },
     {
       "localId": "e5bXFO0SONUk6VYbiuThBLjrWUfL",
@@ -35,7 +35,7 @@
           "email": "not-experimenter@google.com"
         }
       ],
-      "validSince": "1781034730",
+      "validSince": "1781066815",
       "email": "not-experimenter@google.com",
       "emailVerified": true,
       "disabled": false
