@@ -1367,7 +1367,7 @@ export async function completeParticipantTransfer(
         const virtualObserverName = String(
           agentProfile.name || agentProfile.publicId,
         );
-        agentProfile.name = `${virtualObserverName}'s Agent`;
+        agentProfile.name = `${virtualObserverName}'s agent (yours)`;
         agentProfile.publicId = `${agentProfile.publicId}-agent`;
         agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${virtualObserverName}.`;
       }
