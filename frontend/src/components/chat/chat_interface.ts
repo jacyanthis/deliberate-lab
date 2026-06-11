@@ -148,11 +148,10 @@ export class ChatInterface extends MobxLitElement {
     if (!config.isTurnBasedChatGroupStyle) return null;
 
     // Turn alternates between the participant and the mediator, with the
-    // mediator always going first. Errors don't count toward turn-taking
-    // (they unblock the participant to retry).
-    const messages = (
-      this.participantService.privateChatMap[this.stage.id] ?? []
-    ).filter((m) => !m.isError);
+    // mediator always going first. Errors from the mediator count as their
+    // turn so the participant is unblocked to retry.
+    const messages =
+      this.participantService.privateChatMap[this.stage.id] ?? [];
     const publicId = this.participantService.profile?.publicId ?? '';
     const latest = messages[messages.length - 1];
     const isMyTurn = !!latest && latest.senderId !== publicId;
