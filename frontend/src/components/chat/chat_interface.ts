@@ -190,7 +190,12 @@ export class ChatInterface extends MobxLitElement {
       this.participantService.privateChatMap[this.stage.id] ?? [];
     const publicId = this.participantService.profile?.publicId ?? '';
     const latest = messages[messages.length - 1];
-    const isMyTurn = !!latest && latest.senderId !== publicId;
+    // Match the group-chat path: agent participants never see "Your turn",
+    // since the agent doesn't drive the participant UI's chat input.
+    const isMyTurn =
+      !this.participantService.profile?.agentConfig &&
+      !!latest &&
+      latest.senderId !== publicId;
 
     if (isMyTurn) {
       const profile = this.participantService.profile;
