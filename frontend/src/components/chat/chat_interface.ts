@@ -161,11 +161,9 @@ export class ChatInterface extends MobxLitElement {
         this.stage.timeLimitInMinutes > 0 &&
         elapsedMinutes >= this.stage.timeLimitInMinutes;
 
-      const minTurnsMet = (this.stage as PrivateChatStageConfig).isTurnBasedChat
-        ? participantMessageCount >=
-          (this.stage as PrivateChatStageConfig).minNumberOfTurns
-        : participantMessageCount >=
-          (this.stage as PrivateChatStageConfig).minNumberOfTurns;
+      const minTurnsMet =
+        participantMessageCount >=
+        (this.stage as PrivateChatStageConfig).minNumberOfTurns;
 
       return (
         (maxTurnsReached && !isWaitingForResponse) ||

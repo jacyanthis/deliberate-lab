@@ -107,8 +107,17 @@ export const onPublicChatMessageCreated = onDocumentCreated(
               event.params.cohortId,
               event.params.stageId,
             );
+            // Defensive optional access — `isReasoningOnly` is added on the
+            // cumulative-reasoning branch; on group-chat-message-limits alone
+            // the field is absent and the access resolves to undefined, which
+            // is falsy so the filter behaviour matches the previous code.
+            // Keeps the backend cap aligned with the frontend, which excludes
+            // reasoning-only messages from chatMap entirely.
             const cohortMessageCount = allChatMessages.filter(
-              (m) => m.type !== UserType.SYSTEM && !m.isError,
+              (m) =>
+                m.type !== UserType.SYSTEM &&
+                !m.isError &&
+                !(m as {isReasoningOnly?: boolean}).isReasoningOnly,
             ).length;
             if (cohortMessageCount >= effectiveMax) {
               await handleMaxMessagesReached(
