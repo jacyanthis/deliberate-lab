@@ -96,21 +96,39 @@ export class ChatInterface extends MobxLitElement {
     const data = this.stagePublicData;
     if (!data || !data.currentTurnParticipantId) return null;
 
-    const id = data.currentTurnParticipantId;
+    let id = data.currentTurnParticipantId;
 
     // If the latest message is already from the current turn holder, the
-    // backend trigger hasn't advanced the turn yet — hide the indicator to
-    // avoid a stale "Waiting for X" flash immediately after X just spoke.
+    // backend trigger hasn't advanced the turn yet. To avoid the banner
+    // disappearing momentarily (which jumps the chat layout above), predict
+    // the next turn holder from turnOrder so the indicator swaps content in
+    // place. End-of-cycle wraps may reshuffle, so only predict within the
+    // current cycle; at the wrap point we fall through and the caller's
+    // placeholder keeps the banner element present.
     const messages = this.cohortService.chatMap[this.stage.id] ?? [];
     const latest = messages[messages.length - 1];
-    if (latest?.senderId === id) return null;
+    if (
+      latest?.senderId === id &&
+      data.turnOrder &&
+      data.turnOrder.length > 1
+    ) {
+      const currentIdx = data.turnOrder.indexOf(id);
+      if (currentIdx !== -1 && currentIdx < data.turnOrder.length - 1) {
+        id = data.turnOrder[currentIdx + 1];
+      } else {
+        return null;
+      }
+    }
 
+    return this.buildGroupChatTurnState(id);
+  }
+
+  private buildGroupChatTurnState(id: string) {
     const isMyTurn =
       !this.participantService.profile?.agentConfig &&
       id === this.participantService.profile?.publicId;
 
-    const participantProfile =
-      this.cohortService.participantMap[data.currentTurnParticipantId];
+    const participantProfile = this.cohortService.participantMap[id];
     if (participantProfile && participantProfile.name) {
       return {
         name: participantProfile.name,
@@ -121,8 +139,7 @@ export class ChatInterface extends MobxLitElement {
       };
     }
 
-    const mediatorProfile =
-      this.cohortService.mediatorMap[data.currentTurnParticipantId];
+    const mediatorProfile = this.cohortService.mediatorMap[id];
     if (mediatorProfile && mediatorProfile.name) {
       return {
         name: mediatorProfile.name,
@@ -140,6 +157,25 @@ export class ChatInterface extends MobxLitElement {
       id,
       isMyTurn,
     };
+  }
+
+  /** Whether the current stage is configured for turn-based interaction.
+   * When true, the banner element is kept in the DOM across turn transitions
+   * (even if the turn indicator state is momentarily null) so the chat
+   * content above does not shift up or down between turns.
+   */
+  @computed get isTurnBasedMode() {
+    if (!this.stage) return false;
+    if (this.stage.kind === StageKind.PRIVATE_CHAT) {
+      return (
+        (this.stage as PrivateChatStageConfig).isTurnBasedChatGroupStyle ??
+        false
+      );
+    }
+    if (this.stage.kind === StageKind.CHAT) {
+      return (this.stage as ChatStageConfig).isTurnBased ?? false;
+    }
+    return false;
   }
 
   @computed private get privateChatTurnIndicatorState() {
@@ -245,7 +281,16 @@ export class ChatInterface extends MobxLitElement {
 
   private renderTurnBanner() {
     const turnState = this.turnIndicatorState;
-    if (!turnState) return nothing;
+    if (!turnState) {
+      // Keep an empty banner element in the DOM during transient turn-
+      // transitions (e.g., end-of-cycle wraps) so the chat content above
+      // does not shift up or down. The placeholder banner reserves the
+      // same vertical space as a real banner but renders no visible text.
+      if (this.isTurnBasedMode) {
+        return html`<div class="banner banner-placeholder">&nbsp;</div>`;
+      }
+      return nothing;
+    }
 
     if (turnState.isMyTurn) {
       return html` <div class="banner success">It's your turn to speak!</div> `;

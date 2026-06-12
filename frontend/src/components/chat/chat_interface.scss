@@ -80,6 +80,16 @@ chat-input {
     color: #7d6608; // High-contrast dark yellow readable on pale yellow
     font-weight: 500;
   }
+
+  // Reserves the banner's vertical space during transient turn transitions
+  // so the chat content above does not shift up or down between turns.
+  &.banner-placeholder {
+    background: transparent;
+    color: transparent;
+    // Match the warning variant's border so total height matches the most
+    // common banner variant. Border color transparent so it stays invisible.
+    border: 1px solid transparent;
+  }
 }
 
 .typing-msg {
