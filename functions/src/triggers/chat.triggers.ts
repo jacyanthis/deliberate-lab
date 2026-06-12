@@ -14,6 +14,7 @@ import {
   MediatorProfileExtended,
 } from '@deliberation-lab/utils';
 import {
+  getAgentMediatorPrompt,
   getFirestoreActiveMediators,
   getFirestoreActiveParticipants,
   getFirestoreParticipant,
@@ -66,25 +67,57 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           publicStageData as ChatStagePublicData,
         );
         // End the discussion globally if the cohort-wide message cap is reached.
-        const maxMessages = (stage as ChatStageConfig).maxNumberOfMessages;
+        // The effective cap is the minimum of (a) the stage-level
+        // maxNumberOfMessages and (b) any per-mediator override set on an
+        // active mediator's chat settings for this stage. Per-mediator
+        // overrides let experimenters set a tighter cap for cohorts running
+        // certain mediator personas (e.g. a single-agent condition that
+        // should end sooner than a multi-agent condition on the same stage).
         const alreadyEnded = (publicStageData as ChatStagePublicData)
           .discussionEndTimestamp;
-        if (maxMessages != null && !alreadyEnded) {
-          const allChatMessages = await getFirestorePublicStageChatMessages(
+        if (!alreadyEnded) {
+          const stageMax = (stage as ChatStageConfig).maxNumberOfMessages;
+          const activeMediators = await getFirestoreActiveMediators(
             event.params.experimentId,
             event.params.cohortId,
-            event.params.stageId,
+            stage.id,
+            true, // checkIsAgent
           );
-          const cohortMessageCount = allChatMessages.filter(
-            (m) => m.type !== UserType.SYSTEM && !m.isError,
-          ).length;
-          if (cohortMessageCount >= maxMessages) {
-            await handleMaxMessagesReached(
+          const mediatorOverrides: number[] = [];
+          for (const mediator of activeMediators) {
+            const personaId = mediator.agentConfig?.agentId;
+            if (!personaId) continue;
+            const mediatorPrompt = await getAgentMediatorPrompt(
+              event.params.experimentId,
+              stage.id,
+              personaId,
+            );
+            const override = mediatorPrompt?.chatSettings?.maxNumberOfMessages;
+            if (override != null) mediatorOverrides.push(override);
+          }
+          const candidates = [
+            ...(stageMax != null ? [stageMax] : []),
+            ...mediatorOverrides,
+          ];
+          const effectiveMax =
+            candidates.length > 0 ? Math.min(...candidates) : null;
+          if (effectiveMax != null) {
+            const allChatMessages = await getFirestorePublicStageChatMessages(
               event.params.experimentId,
               event.params.cohortId,
               event.params.stageId,
             );
-            return;
+            const cohortMessageCount = allChatMessages.filter(
+              (m) => m.type !== UserType.SYSTEM && !m.isError,
+            ).length;
+            if (cohortMessageCount >= effectiveMax) {
+              await handleMaxMessagesReached(
+                event.params.experimentId,
+                event.params.cohortId,
+                event.params.stageId,
+              );
+              return;
+            }
           }
         }
         break;

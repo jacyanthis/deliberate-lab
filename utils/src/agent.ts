@@ -89,6 +89,13 @@ export interface AgentChatSettings {
   // Maximum total responses agent can make during the chat conversation
   // (or null if no max)
   maxResponses: number | null;
+  // Per-mediator override of the stage-level cohort-total message cap. When
+  // this mediator is active in a group chat, the discussion ends globally once
+  // the cohort accumulates this many non-system, non-error messages — even if
+  // the stage's own maxNumberOfMessages would have allowed more. When multiple
+  // mediators with overrides share a chat, the minimum (most restrictive)
+  // applies. Set to null to defer to the stage-level cap.
+  maxNumberOfMessages: number | null;
   // Initial message to send when the conversation begins
   initialMessage: string;
 }
@@ -200,6 +207,7 @@ export function createAgentChatSettings(
     minMessagesBeforeResponding: config.minMessagesBeforeResponding ?? 0,
     canSelfTriggerCalls: config.canSelfTriggerCalls ?? false,
     maxResponses: config.maxResponses ?? 100,
+    maxNumberOfMessages: config.maxNumberOfMessages ?? null,
     initialMessage: config.initialMessage ?? '',
   };
 }

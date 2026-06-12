@@ -364,6 +364,17 @@ export class EditorComponent extends MobxLitElement {
       });
     };
 
+    const updateMaxNumberOfMessages = (e: InputEvent) => {
+      const value = (e.target as HTMLInputElement).value;
+      const maxNumberOfMessages = value === '' ? null : Number(value);
+      this.updatePrompt({
+        chatSettings: {
+          ...agentPromptConfig.chatSettings,
+          maxNumberOfMessages,
+        },
+      });
+    };
+
     const updateNumRetries = (e: InputEvent) => {
       const value = Number((e.target as HTMLInputElement).value);
       if (!isNaN(value) && value >= 0 && value <= 5) {
@@ -457,6 +468,27 @@ export class EditorComponent extends MobxLitElement {
               .value=${chatSettings.maxResponses ?? ''}
               placeholder="No limit"
               @input=${updateMaxResponses}
+            />
+          </div>
+        </div>
+        <div class="field">
+          <label for="maxNumberOfMessages"
+            >Per-mediator cohort message cap</label
+          >
+          <div class="description">
+            Overrides the stage-level "Max total messages" cap for cohorts where
+            this mediator is active. The smaller of the stage and per-mediator
+            cap applies; leave empty to defer to the stage-level cap. Useful for
+            making one condition's chat end earlier than another's.
+          </div>
+          <div class="number-input">
+            <input
+              .disabled=${!this.experimentEditor.isCreator}
+              type="number"
+              min="1"
+              .value=${chatSettings.maxNumberOfMessages ?? ''}
+              placeholder="Defer to stage cap"
+              @input=${updateMaxNumberOfMessages}
             />
           </div>
         </div>
