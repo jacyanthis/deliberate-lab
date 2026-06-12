@@ -47,7 +47,6 @@ import {
   ProfileStageConfig,
   AgentPersonaConfig,
   MediatorProfileExtended,
-  ApiKeyType,
   ParticipantPromptConfig,
   DEFAULT_AGENT_MODEL_SETTINGS,
   VariableScope,
@@ -259,8 +258,6 @@ export async function updateCohortStageUnlocked(
   currentParticipantId: string,
   existingTransaction?: FirebaseFirestore.Transaction,
 ) {
-  let newlyUnlocked = false;
-
   const runLogic = async (transaction: FirebaseFirestore.Transaction) => {
     // Get active participants for given cohort
     const activeParticipants = await getFirestoreActiveParticipants(
@@ -347,7 +344,6 @@ export async function updateCohortStageUnlocked(
       return; // cohort deleted or already unlocked
     }
 
-    newlyUnlocked = true;
     cohortConfig.stageUnlockMap[stageId] = true;
     transaction.set(cohortDoc, cohortConfig);
 
@@ -1262,10 +1258,11 @@ export async function completeParticipantTransfer(
         agentConfig: {
           agentId: repAgentId,
           promptContext: `You are acting as an AI agent representing human observer ${participant.publicId}.`,
-          modelSettings: {
-            apiType: ApiKeyType.GEMINI_API_KEY,
-            modelName: 'gemini-3-flash-preview',
-          },
+          // Mirror the other spawn paths below — defer to the experiment's
+          // default model rather than hardcoding a specific Gemini build that
+          // silently fails when the experimenter hasn't configured a Gemini
+          // API key.
+          modelSettings: DEFAULT_AGENT_MODEL_SETTINGS,
         },
         timestamps: repAgentTimestamps,
         publicId: `${participant.publicId}-agent`,
@@ -1364,12 +1361,15 @@ export async function completeParticipantTransfer(
         participant.hasRepresentative &&
         agentProfile.agentConfig
       ) {
-        const virtualObserverName = String(
-          agentProfile.name || agentProfile.publicId,
-        );
-        agentProfile.name = `${virtualObserverName}'s agent (yours)`;
+        // Reference the OBSERVER's identity, not the freshly-assigned
+        // anonymous-animal name of the agent being created — the prompt
+        // context should tell the agent it represents the human observer
+        // (the user driving this cohort), and the UI label should attribute
+        // the agent to that observer.
+        const observerName = String(participant.name || participant.publicId);
+        agentProfile.name = `${observerName}'s agent (yours)`;
         agentProfile.publicId = `${agentProfile.publicId}-agent`;
-        agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${virtualObserverName}.`;
+        agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${observerName}.`;
       }
 
       transaction.set(getParticipantRef(agentId), agentProfile);
