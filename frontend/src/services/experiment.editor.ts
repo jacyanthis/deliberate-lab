@@ -4,6 +4,8 @@ import {
   AgentParticipantPersonaConfig,
   AgentParticipantTemplate,
   ApiKeyType,
+  ChatPromptConfig,
+  ChatStageConfig,
   CohortParticipantConfig,
   Experiment,
   ExperimentTemplate,
@@ -186,6 +188,30 @@ export class ExperimentEditor extends Service {
     renderApiErrorMessage(ApiKeyType.OLLAMA_CUSTOM_URL);
 
     for (const stage of this.stages) {
+      // Group chat: validate that the message-count bounds are self-consistent
+      // and that no mediator's per-stage cap is below the stage's required
+      // minimum (otherwise the chat ends globally before participants can ever
+      // satisfy the minimum, permanently locking the Next-stage button).
+      if (stage.kind === StageKind.CHAT) {
+        const chatStage = stage as ChatStageConfig;
+        const stageMin = chatStage.minNumberOfMessages ?? 0;
+        const stageMax = chatStage.maxNumberOfMessages;
+        if (stageMax != null && stageMin > stageMax) {
+          errors.push(
+            `${stage.name}: minimum total messages (${stageMin}) exceeds the stage's maximum (${stageMax})`,
+          );
+        }
+        for (const mediator of this.agentMediators) {
+          const prompt = mediator.promptMap[stage.id];
+          const mediatorCap = (prompt as ChatPromptConfig | undefined)
+            ?.chatSettings?.maxNumberOfMessages;
+          if (mediatorCap != null && mediatorCap < stageMin) {
+            errors.push(
+              `${stage.name}: mediator "${mediator.persona.name}" has a cohort message cap of ${mediatorCap}, but the stage requires at least ${stageMin} messages — participants would never be able to advance`,
+            );
+          }
+        }
+      }
       if (
         stage.kind === StageKind.SURVEY ||
         stage.kind === StageKind.SURVEY_PER_PARTICIPANT
