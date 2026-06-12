@@ -163,26 +163,12 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           return !isExplicitlyInactive && !isExplicitlyCompleted;
         });
 
-        const hasHumanObserver = allParticipants.some((p) => {
-          if (!p.isObserver) return false;
-          if (
-            p.currentCohortId !== undefined &&
-            p.currentCohortId !== event.params.cohortId
-          )
-            return false;
-          if (
-            p.currentStageId !== undefined &&
-            p.currentStageId !== event.params.stageId
-          )
-            return false;
-          const isExplicitlyInactive =
-            p.currentStatus !== undefined &&
-            p.currentStatus !== ParticipantStatus.IN_PROGRESS &&
-            p.currentStatus !== ParticipantStatus.ATTENTION_CHECK;
-          return !isExplicitlyInactive && !p.agentConfig;
-        });
-
-        if (activeParticipants.length === 0 && !hasHumanObserver) {
+        // Pause turn-taking once there are no active (non-observer) participants
+        // left, regardless of whether a human observer is still attached —
+        // observers don't take turns and downstream turn-picking logic assumes
+        // at least one non-observer participant is present. This matches
+        // main's behaviour on the same edge case.
+        if (activeParticipants.length === 0) {
           transaction.set(
             publicStageDataRef,
             {
