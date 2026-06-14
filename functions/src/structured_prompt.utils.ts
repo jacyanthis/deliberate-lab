@@ -589,8 +589,7 @@ async function processPromptItems(
     | ParticipantProfileExtended
     | ParticipantProfileExtended[]
     | undefined =
-    userProfile.type === UserType.MEDIATOR &&
-    (stageKind === StageKind.CHAT || stageKind === StageKind.PRIVATE_CHAT)
+    userProfile.type === UserType.MEDIATOR && stageKind === StageKind.CHAT
       ? promptData.participants
       : participantForVariables;
 
