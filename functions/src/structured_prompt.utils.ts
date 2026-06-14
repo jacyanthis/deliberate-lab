@@ -570,11 +570,13 @@ async function processPromptItems(
   // For agent participants, use their own variables.
   // For mediators in private chat, use that participant's variables.
   let participantForVariables: ParticipantProfileExtended | undefined;
+  const actualStageKind = promptData.data[stageId]?.stage?.kind ?? stageKind;
+
   if (userProfile.type === UserType.PARTICIPANT) {
     participantForVariables = userProfile as ParticipantProfileExtended;
   } else if (
     userProfile.type === UserType.MEDIATOR &&
-    stageKind === StageKind.PRIVATE_CHAT
+    actualStageKind === StageKind.PRIVATE_CHAT
   ) {
     participantForVariables =
       promptData.participants.length === 1
@@ -589,7 +591,7 @@ async function processPromptItems(
     | ParticipantProfileExtended
     | ParticipantProfileExtended[]
     | undefined =
-    userProfile.type === UserType.MEDIATOR && stageKind === StageKind.CHAT
+    userProfile.type === UserType.MEDIATOR && actualStageKind === StageKind.CHAT
       ? promptData.participants
       : participantForVariables;
 
