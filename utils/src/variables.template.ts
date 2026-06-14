@@ -267,26 +267,32 @@ export function containsTemplateVariables(text: string): boolean {
 }
 
 /**
- * Extracts variable definitions and merged value map from experiment, cohort, and participant context.
- * Used for resolving template variables in prompts.
- *
- * Variable maps are merged in order of precedence: experiment < cohort < participant.
- *
- * @param participant - The participant whose variables should be included (optional).
- *   For agent participants, pass themselves. For mediators in private chats, pass the
- *   participant they're chatting with.
+ * Extract variable definitions and merged value map from experiment, cohort,
+ * and participant context. Precedence: experiment < cohort < participant(s).
+ * Passing an array of participants (mediators in group chats) yields each
+ * variable as a JSON-encoded array indexable by position
+ * (e.g. `{{topic.0.topicName}}`).
  */
 export function getVariableContext(
   experiment: Experiment,
   cohort: CohortConfig,
-  participant?: ParticipantProfileExtended | null,
+  participant?:
+    | ParticipantProfileExtended
+    | ParticipantProfileExtended[]
+    | null,
 ): {
   variableDefinitions: Record<string, VariableDefinition>;
   valueMap: Record<string, string>;
 } {
   const experimentVariableMap = experiment.variableMap ?? {};
   const cohortVariableMap = cohort.variableMap ?? {};
-  const participantVariableMap = participant?.variableMap ?? {};
+
+  let participantVariableMap: Record<string, string> = {};
+  if (Array.isArray(participant)) {
+    participantVariableMap = collectParticipantVariablesAsArrays(participant);
+  } else if (participant) {
+    participantVariableMap = participant.variableMap ?? {};
+  }
 
   const variableDefinitions = extractVariablesFromVariableConfigs(
     experiment.variableConfigs ?? [],
@@ -298,4 +304,32 @@ export function getVariableContext(
   };
 
   return {variableDefinitions, valueMap};
+}
+
+/** Aggregate each variable name's values across participants into a JSON-encoded array, parsing each participant's stored JSON so the array contains typed values. */
+function collectParticipantVariablesAsArrays(
+  participants: ParticipantProfileExtended[],
+): Record<string, string> {
+  const variableNames = new Set<string>();
+  for (const p of participants) {
+    for (const name of Object.keys(p.variableMap ?? {})) {
+      variableNames.add(name);
+    }
+  }
+
+  const result: Record<string, string> = {};
+  for (const name of variableNames) {
+    const values = participants.map((p) => {
+      const raw = p.variableMap?.[name];
+      if (raw === undefined || raw === null) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Not JSON (e.g. plain string variable) - use raw value
+        return raw;
+      }
+    });
+    result[name] = JSON.stringify(values);
+  }
+  return result;
 }

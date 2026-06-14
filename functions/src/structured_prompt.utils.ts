@@ -582,11 +582,22 @@ async function processPromptItems(
         : undefined;
   }
 
+  // Mediators in group chats see all participants' variables as
+  // arrays-by-position. `participantForVariables` stays single because it
+  // also seeds the participant-scope shuffle downstream.
+  const variableContextParticipants:
+    | ParticipantProfileExtended
+    | ParticipantProfileExtended[]
+    | undefined =
+    userProfile.type === UserType.MEDIATOR && stageKind === StageKind.CHAT
+      ? promptData.participants
+      : participantForVariables;
+
   // Get variable context for resolving templates
   const {variableDefinitions, valueMap} = getVariableContext(
     experiment,
     promptData.cohort,
-    participantForVariables,
+    variableContextParticipants,
   );
 
   for (const promptItem of promptItems) {

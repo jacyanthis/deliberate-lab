@@ -364,8 +364,11 @@ export function getSchemaAtPath(
         currentSchema = currentSchema.items as TSchema;
         continue;
       }
-      // Numeric index provided but schema is not an array or has no items
-      return undefined;
+      // Numeric index provided but schema is not an array.
+      // In group chats, mediators receive participant variables wrapped in arrays
+      // (indexed by position), so we permit numeric indexing on non-arrays to
+      // allow paths like `treatmentGroup_1.0.price` to pass validation.
+      continue;
     }
 
     // 2. Handle Object Properties
