@@ -14,6 +14,7 @@ import {
   StageConfig,
   StageKind,
   UserType,
+  getTimeElapsed,
 } from '@deliberation-lab/utils';
 import {core} from '../../core/core';
 import {AuthService} from '../../services/auth.service';
@@ -226,7 +227,66 @@ export class ChatInterface extends MobxLitElement {
     };
   }
 
+  @computed get isConversationOver() {
+    if (!this.stage) return false;
+    if (this.stage.kind === StageKind.PRIVATE_CHAT) {
+      const chatMessages =
+        this.participantService.privateChatMap[this.stage.id] ?? [];
+      const publicId = this.participantService.profile?.publicId ?? '';
+      const participantMessageCount = chatMessages.filter(
+        (msg) => msg.senderId === publicId && !msg.isError,
+      ).length;
+
+      const maxTurns = (this.stage as PrivateChatStageConfig).maxNumberOfTurns;
+      const maxTurnsReached =
+        maxTurns !== null && participantMessageCount >= maxTurns;
+
+      const isWaitingForResponse =
+        chatMessages.length > 0 &&
+        chatMessages[chatMessages.length - 1].senderId === publicId;
+
+      const discussionStartTimestamp =
+        chatMessages.length > 0 ? chatMessages[0].timestamp : null;
+      const elapsedMinutes = discussionStartTimestamp
+        ? getTimeElapsed(discussionStartTimestamp, 'm')
+        : 0;
+      const maxTimeReached =
+        this.stage.timeLimitInMinutes !== null &&
+        this.stage.timeLimitInMinutes > 0 &&
+        elapsedMinutes >= this.stage.timeLimitInMinutes;
+
+      const minTurnsMet =
+        participantMessageCount >=
+        (this.stage as PrivateChatStageConfig).minNumberOfTurns;
+
+      return (
+        (maxTurnsReached && !isWaitingForResponse) ||
+        (maxTimeReached && minTurnsMet)
+      );
+    }
+
+    if (this.stage.kind === StageKind.CHAT) {
+      const stageData = this.cohortService.stagePublicDataMap[
+        this.stage.id
+      ] as ChatStagePublicData;
+      if (!stageData) return false;
+      if (stageData.discussionEndTimestamp) return true;
+      const max = (this.stage as ChatStageConfig).maxNumberOfMessages;
+      if (max != null) {
+        const messages = this.cohortService.chatMap[this.stage.id] ?? [];
+        const count = messages.filter(
+          (m) => m.type !== UserType.SYSTEM && !m.isError,
+        ).length;
+        if (count >= max) return true;
+      }
+      return false;
+    }
+
+    return false;
+  }
+
   private renderTypingIndicator() {
+    if (this.isConversationOver) return nothing;
     const turnState = this.turnIndicatorState;
     if (!turnState) return nothing;
 
@@ -285,6 +345,7 @@ export class ChatInterface extends MobxLitElement {
   }
 
   private renderTurnBanner() {
+    if (this.isConversationOver) return nothing;
     const turnState = this.turnIndicatorState;
     if (!turnState) {
       // Keep an empty banner element in the DOM during transient turn-

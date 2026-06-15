@@ -71,6 +71,10 @@ export const ChatStageConfigData = Type.Composite(
         discussions: Type.Array(ChatDiscussionData),
         isTurnBased: Type.Optional(Type.Boolean()),
         preventAgentEnd: Type.Optional(Type.Boolean()),
+        minNumberOfMessages: Type.Optional(Type.Integer({minimum: 0})),
+        maxNumberOfMessages: Type.Optional(
+          Type.Union([Type.Integer({minimum: 1}), Type.Null()]),
+        ),
       },
       strict,
     ),

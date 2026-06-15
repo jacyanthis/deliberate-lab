@@ -30,6 +30,12 @@ export interface ChatStageConfig extends BaseStageConfig {
   // If true, agent participants cannot end the chat by setting readyToEndChat
   // in their structured output. The backend ignores the field for agents.
   preventAgentEnd?: boolean;
+  // Minimum total messages from all participants/mediators combined before
+  // a participant is eligible to advance. 0 = no minimum.
+  minNumberOfMessages?: number;
+  // Maximum total messages from all participants/mediators combined; the
+  // discussion ends globally for the whole cohort once reached. null = no cap.
+  maxNumberOfMessages?: number | null;
 }
 
 /** Chat discussion. */
@@ -124,6 +130,8 @@ export function createChatStage(
     timeMinimumInMinutes: config.timeMinimumInMinutes ?? null,
     isTurnBased: config.isTurnBased ?? false,
     preventAgentEnd: config.preventAgentEnd ?? false,
+    minNumberOfMessages: config.minNumberOfMessages ?? 0,
+    maxNumberOfMessages: config.maxNumberOfMessages ?? null,
   };
 }
 

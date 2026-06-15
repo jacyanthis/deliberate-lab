@@ -14,6 +14,7 @@ import {
   MediatorProfileExtended,
 } from '@deliberation-lab/utils';
 import {
+  getAgentMediatorPrompt,
   getFirestoreActiveMediators,
   getFirestoreActiveParticipants,
   getFirestoreParticipant,
@@ -26,7 +27,7 @@ import {
   canSendAgentChatMessage,
 } from '../chat/chat.agent';
 import {sendErrorPrivateChatMessage} from '../chat/chat.utils';
-import {startTimeElapsed} from '../stages/chat.time';
+import {handleMaxMessagesReached, startTimeElapsed} from '../stages/chat.time';
 import {getStructuredPromptConfig} from '../structured_prompt.utils';
 import {app} from '../app';
 
@@ -58,14 +59,78 @@ export const onPublicChatMessageCreated = onDocumentCreated(
 
     // Take action for specific stages
     switch (stage.kind) {
-      case StageKind.CHAT:
+      case StageKind.CHAT: {
         // Start tracking elapsed time
         startTimeElapsed(
           event.params.experimentId,
           event.params.cohortId,
           publicStageData as ChatStagePublicData,
         );
+        // End the discussion globally if the cohort-wide message cap is reached.
+        // The effective cap is the minimum of (a) the stage-level
+        // maxNumberOfMessages and (b) any per-mediator override set on an
+        // active mediator's chat settings for this stage. Per-mediator
+        // overrides let experimenters set a tighter cap for cohorts running
+        // certain mediator personas (e.g. a single-agent condition that
+        // should end sooner than a multi-agent condition on the same stage).
+        const alreadyEnded = (publicStageData as ChatStagePublicData)
+          .discussionEndTimestamp;
+        if (!alreadyEnded) {
+          const stageMax = (stage as ChatStageConfig).maxNumberOfMessages;
+          const activeMediators = await getFirestoreActiveMediators(
+            event.params.experimentId,
+            event.params.cohortId,
+            stage.id,
+            true, // checkIsAgent
+          );
+          const mediatorOverrides: number[] = [];
+          for (const mediator of activeMediators) {
+            const personaId = mediator.agentConfig?.agentId;
+            if (!personaId) continue;
+            const mediatorPrompt = await getAgentMediatorPrompt(
+              event.params.experimentId,
+              stage.id,
+              personaId,
+            );
+            const override = mediatorPrompt?.chatSettings?.maxNumberOfMessages;
+            if (override != null) mediatorOverrides.push(override);
+          }
+          const candidates = [
+            ...(stageMax != null ? [stageMax] : []),
+            ...mediatorOverrides,
+          ];
+          const effectiveMax =
+            candidates.length > 0 ? Math.min(...candidates) : null;
+          if (effectiveMax != null) {
+            const allChatMessages = await getFirestorePublicStageChatMessages(
+              event.params.experimentId,
+              event.params.cohortId,
+              event.params.stageId,
+            );
+            // Defensive optional access — `isReasoningOnly` is added on the
+            // cumulative-reasoning branch; on group-chat-message-limits alone
+            // the field is absent and the access resolves to undefined, which
+            // is falsy so the filter behaviour matches the previous code.
+            // Keeps the backend cap aligned with the frontend, which excludes
+            // reasoning-only messages from chatMap entirely.
+            const cohortMessageCount = allChatMessages.filter(
+              (m) =>
+                m.type !== UserType.SYSTEM &&
+                !m.isError &&
+                !(m as {isReasoningOnly?: boolean}).isReasoningOnly,
+            ).length;
+            if (cohortMessageCount >= effectiveMax) {
+              await handleMaxMessagesReached(
+                event.params.experimentId,
+                event.params.cohortId,
+                event.params.stageId,
+              );
+              return;
+            }
+          }
+        }
         break;
+      }
       case StageKind.SALESPERSON:
         // TODO: Add API calls for salesperson back in
         return; // Don't call any of the usual chat functions

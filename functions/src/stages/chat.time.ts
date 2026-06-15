@@ -100,3 +100,28 @@ async function handleTimeElapsed(
     discussionEndTimestamp: Timestamp.now(),
   });
 }
+
+/**
+ * End the discussion globally because the cohort hit the maximum total
+ * message count for the stage. Writes discussionEndTimestamp first, then
+ * sends the system notice — the system message re-fires
+ * onPublicChatMessageCreated and we want that re-fire to read a stage that's
+ * already marked ended (`alreadyEnded` is true) so it bails before recounting
+ * and double-handling. Reversing this order produced two cap-reached system
+ * messages.
+ */
+export async function handleMaxMessagesReached(
+  experimentId: string,
+  cohortId: string,
+  stageId: string,
+) {
+  await getFirestoreStagePublicDataRef(experimentId, cohortId, stageId).update({
+    discussionEndTimestamp: Timestamp.now(),
+  });
+  await sendSystemChatMessage(
+    experimentId,
+    cohortId,
+    stageId,
+    'The message limit for this stage has been reached; you can no longer respond.',
+  );
+}
