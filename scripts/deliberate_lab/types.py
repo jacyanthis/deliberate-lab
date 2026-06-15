@@ -357,6 +357,7 @@ class PrivateChatStageConfig(BaseModel):
     timeLimitInMinutes: Annotated[int | None, Field(ge=1)] = None
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     isTurnBasedChat: bool | None = None
+    isTurnBasedChatGroupStyle: bool | None = None
     minNumberOfTurns: float | None = None
     maxNumberOfTurns: float | None = None
     preventCancellation: bool | None = None
@@ -755,6 +756,7 @@ class AgentChatSettings(BaseModel):
     minMessagesBeforeResponding: int
     canSelfTriggerCalls: bool
     maxResponses: int | None = None
+    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
     initialMessage: str
 
 
@@ -979,6 +981,9 @@ class ChatStageConfig(BaseModel):
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     discussions: list[DefaultChatDiscussion | CompareChatDiscussion]
     isTurnBased: bool | None = None
+    preventAgentEnd: bool | None = None
+    minNumberOfMessages: Annotated[int | None, Field(ge=0)] = None
+    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
 
 
 class RankingStageConfig(

@@ -88,7 +88,19 @@ export function resolveTemplateVariables(
 
     switch (schemaType) {
       case 'string':
-        typedValueMap[variableName] = valueMap[variableName] ?? '';
+      default:
+        // Try parsing JSON first in case the user pasted JSON into a string variable
+        // or if the schema type is missing
+        try {
+          const parsed = JSON.parse(valueMap[variableName]);
+          if (typeof parsed === 'object' && parsed !== null) {
+            typedValueMap[variableName] = parsed;
+          } else {
+            typedValueMap[variableName] = valueMap[variableName] ?? '';
+          }
+        } catch {
+          typedValueMap[variableName] = valueMap[variableName] ?? '';
+        }
         break;
       case 'boolean':
         typedValueMap[variableName] = valueMap[variableName] === 'true';
@@ -100,20 +112,13 @@ export function resolveTemplateVariables(
       case 'object':
       case 'array':
         // Parse JSON for complex types
-        let parsed = JSON.parse(valueMap[variableName]);
-        // If it's a single-element array containing an object, merge the object's properties
-        // onto the array itself so Mustache can resolve `{{topic.topicName}}` directly
-        if (
-          Array.isArray(parsed) &&
-          parsed.length === 1 &&
-          typeof parsed[0] === 'object' &&
-          parsed[0] !== null
-        ) {
-          parsed = Object.assign([...parsed], parsed[0]);
+        try {
+          typedValueMap[variableName] = valueMap[variableName]
+            ? JSON.parse(valueMap[variableName])
+            : undefined;
+        } catch {
+          typedValueMap[variableName] = valueMap[variableName];
         }
-        typedValueMap[variableName] = parsed;
-        break;
-      default:
         break;
     }
   });

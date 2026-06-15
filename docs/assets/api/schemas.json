@@ -735,6 +735,17 @@
         },
         "isTurnBased": {
           "type": "boolean"
+        },
+        "preventAgentEnd": {
+          "type": "boolean"
+        },
+        "minNumberOfMessages": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxNumberOfMessages": {
+          "minimum": 1,
+          "type": ["integer", "null"]
         }
       }
     },
@@ -1361,6 +1372,9 @@
           "type": ["integer", "null"]
         },
         "isTurnBasedChat": {
+          "type": "boolean"
+        },
+        "isTurnBasedChatGroupStyle": {
           "type": "boolean"
         },
         "minNumberOfTurns": {
@@ -3920,6 +3934,10 @@
           "type": "boolean"
         },
         "maxResponses": {
+          "type": ["integer", "null"]
+        },
+        "maxNumberOfMessages": {
+          "minimum": 1,
           "type": ["integer", "null"]
         },
         "initialMessage": {
