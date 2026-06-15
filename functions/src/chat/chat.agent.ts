@@ -486,8 +486,16 @@ export async function getAgentChatMessage(
     // Logic for not responding (handled below)
   }
 
-  // Only if agent participant is ready to end chat
-  if (readyToEndChat && user.type === UserType.PARTICIPANT) {
+  // Only if agent participant is ready to end chat. In group chat, the
+  // experimenter can suppress this entirely via the preventAgentEnd setting.
+  const groupChatBlocksAgentEnd =
+    stage.kind === StageKind.CHAT &&
+    (stage as ChatStageConfig).preventAgentEnd === true;
+  if (
+    readyToEndChat &&
+    user.type === UserType.PARTICIPANT &&
+    !groupChatBlocksAgentEnd
+  ) {
     // Ensure we don't end chat on the very first message
     if (chatMessages.length > 0) {
       // Call ready to end chat update to stage public data
