@@ -52,7 +52,7 @@ import {
 } from './utils/validation';
 
 const formatAgentName = (nameOrPublicId: string) => {
-  return String(nameOrPublicId || 'Agent') + "'s Agent";
+  return String(nameOrPublicId || 'Agent') + "'s agent";
 };
 
 // ************************************************************************* //
@@ -259,6 +259,17 @@ export const createParticipant = onCall(async (request) => {
       participantConfig.name = formatAgentName(
         participantConfig.name || participantConfig.publicId,
       );
+      // Also update anonymous profiles
+      for (const profileSetId of Object.keys(
+        participantConfig.anonymousProfiles,
+      )) {
+        if (participantConfig.anonymousProfiles[profileSetId].name) {
+          participantConfig.anonymousProfiles[profileSetId].name =
+            formatAgentName(
+              participantConfig.anonymousProfiles[profileSetId].name,
+            );
+        }
+      }
     }
 
     // Write new participant document (All writes happen at the end!)

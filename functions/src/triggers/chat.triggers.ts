@@ -164,11 +164,9 @@ export const onPublicChatMessageCreated = onDocumentCreated(
         });
 
         // Pause turn-taking once there are no active (non-observer) participants
-        // left, regardless of whether a human observer is still attached —
-        // observers don't take turns and downstream turn-picking logic assumes
-        // at least one non-observer participant is present. This matches
-        // main's behaviour on the same edge case.
-        if (activeParticipants.length === 0) {
+        // left and no mediators, regardless of whether a human observer is still
+        // attached. If mediators are present, they can still take turns.
+        if (activeParticipants.length === 0 && allMediatorIds.length === 0) {
           transaction.set(
             publicStageDataRef,
             {

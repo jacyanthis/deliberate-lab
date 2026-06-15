@@ -1251,13 +1251,14 @@ export async function completeParticipantTransfer(
       repAgentTimestamps.readyStages[stageIds[0]] = now;
       repAgentTimestamps.readyStages[nextStageId] = now; // Mark nextStageId as ready so it doesn't block the stage unlock
 
+      const observerName = String(participant.name || participant.publicId);
       const repAgentProfile = createParticipantProfileExtended({
         currentCohortId: targetCohortId,
-        name: `${participant.name || participant.publicId}'s Agent`,
+        name: `${observerName}'s agent (yours)`,
         avatar: '🤖',
         agentConfig: {
           agentId: repAgentId,
-          promptContext: `You are acting as an AI agent representing human observer ${participant.publicId}.`,
+          promptContext: `You are acting as an AI agent representing human observer ${observerName}.`,
           // Mirror the other spawn paths below — defer to the experiment's
           // default model rather than hardcoding a specific Gemini build that
           // silently fails when the experimenter hasn't configured a Gemini
@@ -1346,6 +1347,21 @@ export async function completeParticipantTransfer(
         profileType,
       );
 
+      // Append 's agent to make it clear they are virtual AI participants,
+      // matching the observer representative's naming convention
+      if (agentProfile.name) {
+        agentProfile.name = `${agentProfile.name}'s agent`;
+      } else {
+        agentProfile.name = `Agent ${agentProfile.publicId.substring(0, 8)}`;
+      }
+
+      // Also append to all anonymous profiles
+      for (const profileSetId of Object.keys(agentProfile.anonymousProfiles)) {
+        if (agentProfile.anonymousProfiles[profileSetId].name) {
+          agentProfile.anonymousProfiles[profileSetId].name += "'s agent";
+        }
+      }
+
       agentProfile.variableMap = await generateVariablesForScope(
         experiment.variableConfigs ?? [],
         {
@@ -1355,23 +1371,6 @@ export async function completeParticipantTransfer(
           participantId: agentId,
         },
       );
-
-      if (
-        participant.isObserver &&
-        participant.hasRepresentative &&
-        agentProfile.agentConfig
-      ) {
-        // Reference the OBSERVER's identity, not the freshly-assigned
-        // anonymous-animal name of the agent being created — the prompt
-        // context should tell the agent it represents the human observer
-        // (the user driving this cohort), and the UI label should attribute
-        // the agent to that observer.
-        const observerName = String(participant.name || participant.publicId);
-        agentProfile.name = `${observerName}'s agent (yours)`;
-        agentProfile.publicId = `${agentProfile.publicId}-agent`;
-        agentProfile.agentConfig.promptContext = `You are acting as an AI agent representing human observer ${observerName}.`;
-      }
-
       transaction.set(getParticipantRef(agentId), agentProfile);
     }
   }
