@@ -93,7 +93,18 @@ export function resolveTemplateVariables(
       case 'object':
       case 'array':
         // Parse JSON for complex types
-        typedValueMap[variableName] = JSON.parse(valueMap[variableName]);
+        let parsed = JSON.parse(valueMap[variableName]);
+        // If it's a single-element array containing an object, merge the object's properties
+        // onto the array itself so Mustache can resolve `{{topic.topicName}}` directly
+        if (
+          Array.isArray(parsed) &&
+          parsed.length === 1 &&
+          typeof parsed[0] === 'object' &&
+          parsed[0] !== null
+        ) {
+          parsed = Object.assign([...parsed], parsed[0]);
+        }
+        typedValueMap[variableName] = parsed;
         break;
       default:
         break;

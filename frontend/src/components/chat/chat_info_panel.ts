@@ -1,5 +1,7 @@
 import '../../pair-components/icon_button';
 import '../../pair-components/tooltip';
+import '../../pair-components/textarea';
+import '../../pair-components/button';
 import '../participant_profile/avatar_icon';
 import '../participant_profile/profile_display';
 import '../stages/stage_description';
@@ -51,10 +53,24 @@ export class ChatPanel extends MobxLitElement {
       `;
     }
 
+    const showScratchpad = this.participantService.profile?.isObserver === true;
+
     return html`
-      <div class="side-layout">
-        <stage-description .stage=${this.stage} noPadding> </stage-description>
-        ${this.renderTimer()} ${this.renderParticipantList()}
+      <div class="side-layout ${showScratchpad ? 'with-scratchpad' : ''}">
+        ${showScratchpad
+          ? html`
+              <div class="scrollable-content">
+                <stage-description .stage=${this.stage} noPadding>
+                </stage-description>
+                ${this.renderTimer()} ${this.renderParticipantList()}
+              </div>
+              ${this.renderScratchpad()}
+            `
+          : html`
+              <stage-description .stage=${this.stage} noPadding>
+              </stage-description>
+              ${this.renderTimer()} ${this.renderParticipantList()}
+            `}
       </div>
     `;
   }
@@ -112,7 +128,9 @@ export class ChatPanel extends MobxLitElement {
   }
 
   private renderParticipantList(topLayout = false) {
-    const activeParticipants = this.cohortService.activeParticipants;
+    const activeParticipants = this.cohortService.activeParticipants.filter(
+      (p) => !p.isObserver,
+    );
     const mediators = this.cohortService.getMediatorsForStage(
       this.stage?.id ?? '',
     );
@@ -182,6 +200,50 @@ export class ChatPanel extends MobxLitElement {
         </participant-profile-display>
       </div>
     `;
+  }
+
+  private renderScratchpad() {
+    const value = this.participantService.scratchpadText;
+    const isSubmitting = this.participantService.isSubmittingThought;
+    const isSubmitDisabled = isSubmitting || !value || value.trim() === '';
+
+    const submitThoughts = async () => {
+      await this.participantService.submitParticipantThought(value);
+    };
+
+    return html`
+      <div class="scratchpad-container">
+        <div class="scratchpad-title">Share your thoughts</div>
+        <div class="scratchpad-subtitle">
+          What do you think about what you are observing? Please write down your
+          thoughts and click "Submit". You can submit multiple times. Do not
+          worry about spelling or grammar.
+        </div>
+        <pr-textarea
+          size="small"
+          variant="outlined"
+          placeholder="Type your thoughts here..."
+          .value=${value}
+          ?disabled=${isSubmitting}
+          @change=${this.onScratchpadChange}
+        >
+        </pr-textarea>
+        <pr-button
+          size="small"
+          variant="tonal"
+          ?disabled=${isSubmitDisabled}
+          ?loading=${isSubmitting}
+          @click=${submitThoughts}
+          class="scratchpad-submit-btn"
+        >
+          Submit thoughts
+        </pr-button>
+      </div>
+    `;
+  }
+
+  private onScratchpadChange(e: CustomEvent) {
+    this.participantService.setScratchpadText(e.detail.value);
   }
 }
 

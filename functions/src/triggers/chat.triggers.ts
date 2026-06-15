@@ -79,9 +79,12 @@ export const onPublicChatMessageCreated = onDocumentCreated(
       event.params.cohortId,
       stage.id,
       false, // Get all participants, not just agents
+      true, // Include observers
     );
 
-    const allParticipantIds = allParticipants.map((p) => p.privateId);
+    const allParticipantIds = allParticipants
+      .filter((p) => !p.isObserver)
+      .map((p) => p.privateId);
 
     const chatStage = stage as ChatStageConfig;
     const chatPublicData = publicStageData as ChatStagePublicData;
@@ -138,8 +141,9 @@ export const onPublicChatMessageCreated = onDocumentCreated(
         let currentTurnParticipantId = chatPublicData.currentTurnParticipantId;
         let cycleIndex = chatPublicData.cycleIndex ?? 0;
 
-        // Get active IDs for validation and filtering. Filter out completed/booted/timed-out participants.
+        // Get active IDs for validation and filtering. Filter out completed/booted/timed-out participants and observers.
         const activeParticipants = allParticipants.filter((p) => {
+          if (p.isObserver) return false;
           if (
             p.currentCohortId !== undefined &&
             p.currentCohortId !== event.params.cohortId
@@ -159,7 +163,10 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           return !isExplicitlyInactive && !isExplicitlyCompleted;
         });
 
-        if (activeParticipants.length === 0) {
+        // Pause turn-taking once there are no active (non-observer) participants
+        // left and no mediators, regardless of whether a human observer is still
+        // attached. If mediators are present, they can still take turns.
+        if (activeParticipants.length === 0 && allMediatorIds.length === 0) {
           transaction.set(
             publicStageDataRef,
             {
@@ -514,9 +521,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
             await createAgentChatMessageFromPrompt(
               event.params.experimentId,
               event.params.cohortId,
-              mediator
-                ? allParticipants.map((p) => p.privateId)
-                : [agent.privateId],
+              mediator ? allParticipantIds : [agent.privateId],
               stage.id,
               '', // empty triggerChatId indicates initial message
               agent,
@@ -531,7 +536,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           await createAgentChatMessageFromPrompt(
             event.params.experimentId,
             event.params.cohortId,
-            allParticipants.map((p) => p.privateId),
+            allParticipantIds,
             stage.id,
             finalTriggerChatId,
             nextMediatorHolder,

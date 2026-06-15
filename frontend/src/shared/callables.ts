@@ -46,6 +46,7 @@ import {
   UpdateRankingStageParticipantAnswerData,
   UpdateSurveyPerParticipantStageParticipantAnswerData,
   UpdateSurveyStageParticipantAnswerData,
+  SubmitParticipantThoughtData,
   PersonaGenerationMode,
 } from '@deliberation-lab/utils';
 
@@ -766,5 +767,20 @@ export const revokeDeliberateLabAPIKeyCallable = async (
     functions,
     'revokeDeliberateLabAPIKey',
   )({keyId});
+  return data;
+};
+
+/** Generic endpoint to submit participant observation thoughts. */
+export const submitParticipantThoughtCallable = async (
+  functions: Functions,
+  config: SubmitParticipantThoughtData,
+) => {
+  const {data} = await httpsCallable<
+    SubmitParticipantThoughtData,
+    SuccessResponse
+  >(
+    functions,
+    'submitParticipantThought',
+  )(config);
   return data;
 };

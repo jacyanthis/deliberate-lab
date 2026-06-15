@@ -151,6 +151,15 @@ export const CreateParticipantData = Type.Object(
       }),
     ),
     prolificId: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+    isObserver: Type.Optional(Type.Boolean()),
+    hasRepresentative: Type.Optional(Type.Boolean()),
+    otherAgentGeneration: Type.Optional(
+      Type.Object({
+        numOtherAgents: Type.Number(),
+        otherAgentsPersonas: Type.Boolean(),
+      }),
+    ),
+    swapMediator: Type.Optional(Type.String()),
   },
   strict,
 );
@@ -210,3 +219,20 @@ export const AnonymousProfileSchema = Type.Object({
   repeat: Type.Number(),
   avatar: Type.String(),
 });
+
+// ************************************************************************* //
+// submitParticipantThought endpoint for participants                        //
+// ************************************************************************* //
+export const SubmitParticipantThoughtData = Type.Object(
+  {
+    experimentId: Type.String({minLength: 1}),
+    participantId: Type.String({minLength: 1}),
+    stageId: Type.String({minLength: 1}),
+    text: Type.String({minLength: 1}),
+  },
+  strict,
+);
+
+export type SubmitParticipantThoughtData = Static<
+  typeof SubmitParticipantThoughtData
+>;
