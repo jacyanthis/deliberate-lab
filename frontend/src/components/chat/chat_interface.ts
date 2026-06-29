@@ -71,7 +71,7 @@ export class ChatInterface extends MobxLitElement {
     // banner stays up for at least 1s even if setup finishes sooner.
     if (
       !this.sawSetup &&
-      this.isGroupChat &&
+      this.isTurnBasedGroupChat &&
       !this.cohortService.isChatLoading &&
       !this.isChatReady
     ) {
@@ -84,6 +84,19 @@ export class ChatInterface extends MobxLitElement {
 
   private get isGroupChat(): boolean {
     return this.stage?.kind === StageKind.CHAT;
+  }
+
+  /** Whether this is a turn-based group chat.
+   *
+   * The banner area only exists in a turn-based chat, which is the one that
+   * shows whose turn it is. A chat that is not turn-based shows no banner at
+   * all, so the setup banner does not belong there either: it would be the
+   * only banner that stage ever had, and with no turn to assign it would stay
+   * up until somebody sent the first message.
+   */
+  private get isTurnBasedGroupChat(): boolean {
+    if (!this.isGroupChat) return false;
+    return Boolean((this.stage as ChatStageConfig).isTurnBased);
   }
 
   /** Whether the group chat has started: a turn is assigned or a message
@@ -107,7 +120,7 @@ export class ChatInterface extends MobxLitElement {
    *  it for at least 1s once it appears. While shown it replaces the turn
    *  banner and the typing dots are suppressed. */
   private get showSetupBanner(): boolean {
-    if (!this.isGroupChat) return false;
+    if (!this.isTurnBasedGroupChat) return false;
     if (this.cohortService.isChatLoading) return false;
     if (!this.isChatReady) return true;
     return this.sawSetup && !this.minSetupTimePassed;

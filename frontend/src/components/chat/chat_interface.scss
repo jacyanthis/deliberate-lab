@@ -64,7 +64,11 @@ chat-input {
 .banner {
   @include typescale.label-large;
   border-radius: 8px;
-  margin: common.$spacing-medium common.$spacing-xl;
+  // Hug the text and center, so a banner reads as an isolated chip rather than
+  // a full-width bar stretching across an (often empty) chat panel during setup.
+  width: fit-content;
+  max-width: 100%;
+  margin: common.$spacing-medium auto;
   padding: common.$spacing-medium common.$spacing-large;
   text-align: center;
 
@@ -82,12 +86,17 @@ chat-input {
   }
 
   // Setup banner: spinner + text on one centered row, so it's visually clear
-  // that work is in progress while the group chat is being set up.
+  // that work is in progress while the group chat is being set up. "Setting up"
+  // is a neutral in-progress state, not a warning, so override .warning's yellow
+  // with a normal surface chip (defined after .warning, so it wins).
   &.setup-banner {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: common.$spacing-small;
+    background: var(--md-sys-color-surface-container-high, #ececf0);
+    border-color: var(--md-sys-color-outline-variant, #c7c7cc);
+    color: var(--md-sys-color-on-surface-variant, #44464f);
   }
 }
 
@@ -95,8 +104,8 @@ chat-input {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  border: 2px solid rgba(125, 102, 8, 0.25); // faded warning text color
-  border-top-color: #7d6608; // matches the warning text color
+  border: 2px solid var(--md-sys-color-outline-variant, rgba(0, 0, 0, 0.15));
+  border-top-color: var(--md-sys-color-on-surface-variant, #44464f);
   border-radius: 50%;
   animation: setupSpin 0.8s linear infinite;
 }
