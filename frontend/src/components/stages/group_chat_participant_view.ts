@@ -8,6 +8,7 @@ import '../progress/progress_chat_discussion_completed';
 import '../progress/progress_stage_completed';
 import '../chat/chat_interface';
 import '../chat/chat_message';
+import '../chat/audio_scratchpad';
 
 import {MobxLitElement} from '@adobe/lit-mobx';
 import {CSSResultGroup, html, nothing} from 'lit';
@@ -31,6 +32,7 @@ import {
   getTimeElapsed,
 } from '@deliberation-lab/utils';
 
+import {SCRATCHPAD_AS_AUDIO} from '../chat/audio_scratchpad';
 import {styles} from './group_chat_participant_view.scss';
 
 /** Group chat interface for participants */
@@ -320,6 +322,11 @@ export class GroupChatView extends MobxLitElement {
     };
 
     return html`
+      ${SCRATCHPAD_AS_AUDIO && this.participantService.profile?.isObserver
+        ? html`<audio-scratchpad
+            .stageId=${this.stage?.id ?? ''}
+          ></audio-scratchpad>`
+        : nothing}
       <chat-interface
         .stage=${this.stage}
         .disableInput=${this.disableInput ||
