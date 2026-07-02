@@ -18,6 +18,8 @@ import {
   ChatStageConfig,
   MEDIATOR_OBSERVER_COLOR,
   variableConfigsIncludeObserver,
+  generateId,
+  SubmitParticipantThoughtData,
 } from '@deliberation-lab/utils';
 import {
   getFirestoreCohort,
@@ -851,6 +853,89 @@ export const updateParticipantStatus = onCall(async (request) => {
 
     participant.currentStatus = data.status;
     transaction.set(document, participant);
+  });
+
+  return {success: true};
+});
+
+// ************************************************************************* //
+// submitParticipantThought endpoint                                         //
+//                                                                           //
+// Input structure: { experimentId, participantId, stageId, text }           //
+// Validation: utils/src/participant.validation.ts                           //
+// ************************************************************************* //
+export const submitParticipantThought = onCall(async (request) => {
+  const {data} = request;
+
+  const validInput = Value.Check(SubmitParticipantThoughtData, data);
+  if (!validInput) {
+    throw new HttpsError('invalid-argument', 'Invalid data');
+  }
+
+  const {experimentId, participantId, stageId, text} = data;
+
+  const trimmedText = text.trim();
+  if (trimmedText.length === 0) {
+    throw new HttpsError('invalid-argument', 'Text cannot be empty');
+  }
+
+  // Fetch parent entities in parallel to ensure their existence and check access permissions
+  const [experimentDoc, participantDoc, stageDoc] = await Promise.all([
+    app.firestore().collection('experiments').doc(experimentId).get(),
+    app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('participants')
+      .doc(participantId)
+      .get(),
+    app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('stages')
+      .doc(stageId)
+      .get(),
+  ]);
+
+  if (!experimentDoc.exists) {
+    throw new HttpsError('not-found', 'Experiment not found');
+  }
+
+  if (!participantDoc.exists) {
+    throw new HttpsError('not-found', 'Participant not found');
+  }
+
+  const participant = participantDoc.data() as ParticipantProfileExtended;
+  if (!participant.isObserver) {
+    throw new HttpsError(
+      'permission-denied',
+      'Participant must be an observer to submit thoughts',
+    );
+  }
+
+  if (!stageDoc.exists) {
+    throw new HttpsError('not-found', 'Stage not found');
+  }
+
+  const thoughtId = generateId();
+  const timestamp = Timestamp.now();
+
+  const thoughtRef = app
+    .firestore()
+    .collection('experiments')
+    .doc(experimentId)
+    .collection('participants')
+    .doc(participantId)
+    .collection('stageData')
+    .doc(stageId)
+    .collection('thoughts')
+    .doc(thoughtId);
+
+  await thoughtRef.set({
+    id: thoughtId,
+    text: trimmedText,
+    timestamp,
   });
 
   return {success: true};

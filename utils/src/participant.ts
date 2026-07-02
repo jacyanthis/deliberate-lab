@@ -79,6 +79,13 @@ export interface AnonymousProfileMetadata {
   avatar: string;
 }
 
+/** Participant observation thought structure. */
+export interface ParticipantThought {
+  id: string;
+  text: string;
+  timestamp: UnifiedTimestamp;
+}
+
 /** Participant profile available in private participants collection. */
 export interface ParticipantProfileExtended extends ParticipantProfile {
   privateId: string;
