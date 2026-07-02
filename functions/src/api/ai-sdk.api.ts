@@ -870,9 +870,15 @@ function mapErrorToModelResponse(error: unknown): ModelResponse {
       };
     }
 
+    // Uncategorized API call error: preserve the HTTP status and raw provider
+    // body so this UNKNOWN_ERROR can be root-caused from the persisted log
+    // (the other branches above are self-explanatory from their status alone).
     return {
       status: ModelResponseStatus.UNKNOWN_ERROR,
       errorMessage: error.message,
+      errorName: error.name,
+      errorStatusCode: statusCode,
+      rawResponse: error.responseBody,
     };
   }
 
@@ -881,6 +887,7 @@ function mapErrorToModelResponse(error: unknown): ModelResponse {
   return {
     status: ModelResponseStatus.UNKNOWN_ERROR,
     errorMessage: error instanceof Error ? error.message : String(error),
+    errorName: error instanceof Error ? error.name : typeof error,
   };
 }
 

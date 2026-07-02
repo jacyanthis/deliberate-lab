@@ -118,12 +118,15 @@ export async function processModelResponse(
       console.log(error);
       retryTimedOut = error instanceof RetryTimeoutError;
 
-      // Log the error response
+      // Log the error response. Keep the error's class name so a thrown
+      // exception surfaced as UNKNOWN_ERROR (e.g. a timeout vs an unexpected
+      // internal error) stays diagnosable from the persisted log.
       log.response = {
         status: retryTimedOut
           ? ModelResponseStatus.PROVIDER_UNAVAILABLE_ERROR
           : ModelResponseStatus.UNKNOWN_ERROR,
         errorMessage: lastError.message,
+        errorName: lastError.name,
       };
       log.queryTimestamp = Timestamp.now();
       log.responseTimestamp = Timestamp.now();

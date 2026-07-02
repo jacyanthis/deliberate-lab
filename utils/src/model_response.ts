@@ -142,6 +142,12 @@ export interface ModelResponse {
   // The model's response in JSON
   parsedResponse?: object;
   errorMessage?: string;
+  // Provider/error class name (e.g. 'APICallError', 'AttemptTimeoutError').
+  // Kept so an UNKNOWN_ERROR, the catch-all status whose message alone is
+  // often opaque, can be diagnosed by experimenters from the persisted log.
+  errorName?: string;
+  // HTTP status code, when the error originated from a provider API call.
+  errorStatusCode?: number;
   // Reasoning/thought blocks (concatenated if multiple)
   reasoning?: string;
   // List of files from response (images, etc.) - excludes files from thought blocks

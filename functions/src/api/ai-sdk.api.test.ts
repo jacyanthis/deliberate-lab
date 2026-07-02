@@ -842,6 +842,10 @@ describe('mapErrorToModelResponse', () => {
       });
       const response = mapErrorToModelResponse(error);
       expect(response.status).toBe(ModelResponseStatus.UNKNOWN_ERROR);
+      // Diagnostic detail must be preserved so an opaque UNKNOWN_ERROR can be
+      // root-caused from the persisted log.
+      expect(response.errorStatusCode).toBe(400);
+      expect(response.errorName).toBeDefined();
     });
   });
 
