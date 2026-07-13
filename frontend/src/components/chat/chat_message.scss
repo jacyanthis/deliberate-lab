@@ -38,6 +38,9 @@ $bubble-width: 400px;
 
 .chat-bubble {
   @include typescale.body-small;
+  // Size to the message text; without this the bubble stretches to the
+  // widest sibling (the name/date row) in the flex column.
+  align-self: start;
   align-items: end;
   gap: common.$spacing-medium;
   padding: common.$spacing-medium common.$spacing-large;
