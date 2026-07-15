@@ -27,6 +27,9 @@ export interface ChatStageConfig extends BaseStageConfig {
   timeLimitInMinutes: number | null; // Maximum duration in minutes (integer), or null if no limit.
   timeMinimumInMinutes: number | null; // Minimum time participants must stay in minutes (integer), or null if no minimum.
   isTurnBased?: boolean; // Whether the conversation is turn-based
+  // Reshuffle the participant turn order at the start of each cycle. When
+  // off, the order drawn at the start of the conversation is kept.
+  randomizeTurnOrderEachCycle?: boolean;
 }
 
 /** Chat discussion. */
@@ -120,6 +123,7 @@ export function createChatStage(
     timeLimitInMinutes: config.timeLimitInMinutes ?? null,
     timeMinimumInMinutes: config.timeMinimumInMinutes ?? null,
     isTurnBased: config.isTurnBased ?? false,
+    randomizeTurnOrderEachCycle: config.randomizeTurnOrderEachCycle ?? false,
   };
 }
 

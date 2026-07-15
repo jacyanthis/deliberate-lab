@@ -735,6 +735,9 @@
         },
         "isTurnBased": {
           "type": "boolean"
+        },
+        "randomizeTurnOrderEachCycle": {
+          "type": "boolean"
         }
       }
     },

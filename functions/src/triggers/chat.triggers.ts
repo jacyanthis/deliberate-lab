@@ -249,7 +249,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
               const hadMediators = turnOrder.some((id) =>
                 allMediatorIds.includes(id),
               );
-              if (hadMediators) {
+              if (hadMediators && chatStage.randomizeTurnOrderEachCycle) {
                 const seedString = `${event.params.cohortId}-${event.params.stageId}-${cycleIndex}`;
                 const shuffledParticipants = shuffleWithSeed(
                   allPublicParticipantIds,
@@ -383,7 +383,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
                   allMediatorIds.includes(id),
                 );
 
-                if (hadMediators) {
+                if (hadMediators && chatStage.randomizeTurnOrderEachCycle) {
                   const seedString = `${event.params.cohortId}-${event.params.stageId}-${cycleIndex}`;
                   const shuffledParticipants = shuffleWithSeed(
                     allPublicParticipantIds,
