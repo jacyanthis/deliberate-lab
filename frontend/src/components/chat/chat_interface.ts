@@ -158,6 +158,18 @@ export class ChatInterface extends MobxLitElement {
     `;
   }
 
+  // The column-reverse chat layout pins scrollTop to 0, the bottom. At some
+  // browser zoom levels fractional pixel heights leave scrollTop a fraction
+  // away from 0, which breaks the pinning, so new messages stop scrolling
+  // into view. Snap back whenever the viewer is within a few pixels of the
+  // bottom; anyone who scrolled up to read is left alone.
+  private handleChatSlotChange() {
+    const scroll = this.shadowRoot?.querySelector('.chat-scroll');
+    if (scroll && Math.abs(scroll.scrollTop) < 8) {
+      scroll.scrollTop = 0;
+    }
+  }
+
   override render() {
     if (!this.stage) return nothing;
     return html`
@@ -171,7 +183,7 @@ export class ChatInterface extends MobxLitElement {
                 ${this.mobileView
                   ? html`<slot name="mobile-description"></slot>`
                   : nothing}
-                <slot></slot>
+                <slot @slotchange=${this.handleChatSlotChange}></slot>
                 ${this.renderTypingIndicator()}
               </div>
             </div>
