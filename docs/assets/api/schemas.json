@@ -735,6 +735,9 @@
         },
         "isTurnBased": {
           "type": "boolean"
+        },
+        "participantWordsPerMinute": {
+          "type": ["number", "null"]
         }
       }
     },

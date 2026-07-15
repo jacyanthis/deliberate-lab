@@ -31,6 +31,7 @@ export class ChatEditor extends MobxLitElement {
     return html`
       <div class="title">Conversation settings</div>
       ${this.renderTimeLimit()} ${this.renderTurnBasedSetting()}
+      ${this.renderParticipantTypingSpeed()}
       <div class="divider"></div>
       <div class="title">Agent mediators</div>
       <div class="description">
@@ -61,6 +62,36 @@ export class ChatEditor extends MobxLitElement {
             Turn-based conversation: Each participant speaks in a random order,
             beginning with the mediators if at least one is present.
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderParticipantTypingSpeed() {
+    const updateNum = (e: InputEvent) => {
+      const value = Number((e.target as HTMLInputElement).value);
+      this.experimentEditor.updateStage({
+        ...this.stage!,
+        participantWordsPerMinute: value > 0 ? value : null,
+      });
+    };
+
+    return html`
+      <div class="config-item">
+        <div class="number-input">
+          <label for="participantWordsPerMinute">
+            Agent participant typing speed in words per minute (0 for no typing
+            delay)
+          </label>
+          <input
+            type="number"
+            id="participantWordsPerMinute"
+            name="participantWordsPerMinute"
+            min="0"
+            .value=${this.stage?.participantWordsPerMinute ?? 0}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @input=${updateNum}
+          />
         </div>
       </div>
     `;

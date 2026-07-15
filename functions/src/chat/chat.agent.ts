@@ -800,10 +800,20 @@ export async function sendAgentGroupChatMessage(
   chatMessage: ChatMessage,
   chatSettings: AgentChatSettings,
 ) {
+  // Agent participants have no chat settings of their own, so the stage can
+  // set a typing speed for them; mediators keep their own setting.
+  let wordsPerMinute = chatSettings.wordsPerMinute;
+  if (!wordsPerMinute && chatMessage.type === UserType.PARTICIPANT) {
+    const stage = await getFirestoreStage(experimentId, stageId);
+    if (stage?.kind === StageKind.CHAT) {
+      wordsPerMinute = (stage as ChatStageConfig).participantWordsPerMinute;
+    }
+  }
+
   // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
-  if (chatSettings.wordsPerMinute) {
-    await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
+  if (wordsPerMinute) {
+    await awaitTypingDelay(chatMessage.message, wordsPerMinute);
   }
 
   // Check if the conversation has moved on,

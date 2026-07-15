@@ -27,6 +27,10 @@ export interface ChatStageConfig extends BaseStageConfig {
   timeLimitInMinutes: number | null; // Maximum duration in minutes (integer), or null if no limit.
   timeMinimumInMinutes: number | null; // Minimum time participants must stay in minutes (integer), or null if no minimum.
   isTurnBased?: boolean; // Whether the conversation is turn-based
+  // Simulated typing speed for agent participants' messages. Null means no
+  // typing delay, matching prior behavior. Mediators use the wordsPerMinute
+  // on their own chat settings instead.
+  participantWordsPerMinute?: number | null;
 }
 
 /** Chat discussion. */
@@ -120,6 +124,7 @@ export function createChatStage(
     timeLimitInMinutes: config.timeLimitInMinutes ?? null,
     timeMinimumInMinutes: config.timeMinimumInMinutes ?? null,
     isTurnBased: config.isTurnBased ?? false,
+    participantWordsPerMinute: config.participantWordsPerMinute ?? null,
   };
 }
 

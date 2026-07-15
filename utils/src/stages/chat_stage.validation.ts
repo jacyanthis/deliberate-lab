@@ -70,6 +70,9 @@ export const ChatStageConfigData = Type.Composite(
         ),
         discussions: Type.Array(ChatDiscussionData),
         isTurnBased: Type.Optional(Type.Boolean()),
+        participantWordsPerMinute: Type.Optional(
+          Type.Union([Type.Number(), Type.Null()]),
+        ),
       },
       strict,
     ),
