@@ -103,7 +103,7 @@ export class ParticipantService extends Service {
     {};
   @observable privateChatMap: Record<string, ChatMessage[]> = {};
   @observable alertMap: Record<string, AlertMessage> = {};
-  @observable scratchpadText = '';
+  @observable textNotes = '';
 
   // Loading
   @observable unsubscribe: Unsubscribe[] = [];
@@ -230,8 +230,8 @@ export class ParticipantService extends Service {
     this.currentStageViewId = stageId;
   }
 
-  @action setScratchpadText(text: string) {
-    this.scratchpadText = text;
+  @action setTextNotes(text: string) {
+    this.textNotes = text;
   }
 
   updateForRoute(
@@ -439,7 +439,7 @@ export class ParticipantService extends Service {
     this.answerMap = {};
     this.privateChatMap = {};
     this.alertMap = {};
-    this.scratchpadText = '';
+    this.textNotes = '';
     this.sp.participantAnswerService.reset();
   }
 
@@ -785,7 +785,7 @@ export class ParticipantService extends Service {
 
       if (response.success) {
         runInAction(() => {
-          this.scratchpadText = '';
+          this.textNotes = '';
         });
       }
     } catch (error) {

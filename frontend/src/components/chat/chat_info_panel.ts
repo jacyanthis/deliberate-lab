@@ -67,18 +67,18 @@ export class ChatPanel extends MobxLitElement {
       `;
     }
 
-    const showScratchpad = this.participantService.profile?.isObserver === true;
+    const showTextNotes = this.participantService.profile?.isObserver === true;
 
     return html`
-      <div class="side-layout ${showScratchpad ? 'with-scratchpad' : ''}">
-        ${showScratchpad
+      <div class="side-layout ${showTextNotes ? 'with-text-notes' : ''}">
+        ${showTextNotes
           ? html`
               <div class="scrollable-content">
                 <stage-description .stage=${this.stage} noPadding>
                 </stage-description>
                 ${this.renderTimer()} ${this.renderParticipantList()}
               </div>
-              ${this.renderScratchpad()}
+              ${this.renderTextNotes()}
             `
           : html`
               <stage-description .stage=${this.stage} noPadding>
@@ -235,8 +235,8 @@ export class ChatPanel extends MobxLitElement {
     `;
   }
 
-  private renderScratchpad() {
-    const value = this.participantService.scratchpadText;
+  private renderTextNotes() {
+    const value = this.participantService.textNotes;
     const isSubmitting = this.participantService.isSubmittingThought;
     const isSubmitDisabled = isSubmitting || !value || value.trim() === '';
 
@@ -245,9 +245,9 @@ export class ChatPanel extends MobxLitElement {
     };
 
     return html`
-      <div class="scratchpad-container">
-        <div class="scratchpad-title">Share your thoughts</div>
-        <div class="scratchpad-subtitle">
+      <div class="text-notes-container">
+        <div class="text-notes-title">Share your thoughts</div>
+        <div class="text-notes-subtitle">
           What do you think about what you are observing? Please write down your
           thoughts and click "Submit". You can submit multiple times. Do not
           worry about spelling or grammar.
@@ -258,7 +258,7 @@ export class ChatPanel extends MobxLitElement {
           placeholder="Type your thoughts here..."
           .value=${value}
           ?disabled=${isSubmitting}
-          @change=${this.onScratchpadChange}
+          @change=${this.onTextNotesChange}
         >
         </pr-textarea>
         <pr-button
@@ -267,7 +267,7 @@ export class ChatPanel extends MobxLitElement {
           ?disabled=${isSubmitDisabled}
           ?loading=${isSubmitting}
           @click=${submitThoughts}
-          class="scratchpad-submit-btn"
+          class="text-notes-submit-btn"
         >
           Submit thoughts
         </pr-button>
@@ -275,8 +275,8 @@ export class ChatPanel extends MobxLitElement {
     `;
   }
 
-  private onScratchpadChange(e: CustomEvent) {
-    this.participantService.setScratchpadText(e.detail.value);
+  private onTextNotesChange(e: CustomEvent) {
+    this.participantService.setTextNotes(e.detail.value);
   }
 }
 
