@@ -1,0 +1,84 @@
+@use '../../sass/common';
+@use '../../sass/typescale';
+
+:host {
+  display: block;
+  width: 100%;
+}
+
+// Inline banner shown while the mic is on (recording) or unsupported.
+.audio-banner {
+  @include typescale.label-medium;
+  @include common.flex-row-align-center;
+  gap: common.$spacing-small;
+  justify-content: center;
+  padding: common.$spacing-small common.$spacing-medium;
+  text-align: center;
+
+  .audio-banner-text {
+    flex-shrink: 1;
+  }
+
+  &.recording {
+    background: var(--md-sys-color-error-container);
+    color: var(--md-sys-color-on-error-container);
+  }
+
+  &.unsupported {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+  }
+}
+
+// Full-view overlay used for the consent gate, the blocked-permission prompt,
+// and the mute pause. Like the quiz popup, it covers the conversation so no new
+// messages appear until the participant acts.
+.audio-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: common.$spacing-large;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.audio-card {
+  @include common.flex-column;
+  align-items: center;
+  gap: common.$spacing-medium;
+  max-width: 420px;
+  width: 100%;
+  padding: common.$spacing-large;
+  text-align: center;
+  border-radius: common.$spacing-medium;
+  background: var(--md-sys-color-surface);
+  color: var(--md-sys-color-on-surface);
+  box-shadow:
+    0px 1px 3px 0px rgba(0, 0, 0, 0.3),
+    0px 4px 8px 3px rgba(0, 0, 0, 0.15);
+}
+
+.audio-paused {
+  @include typescale.label-small;
+  font-style: italic;
+  color: var(--md-sys-color-tertiary);
+}
+
+.audio-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.audio-title {
+  @include typescale.title-medium;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.audio-body {
+  @include typescale.body-small;
+  color: var(--md-sys-color-on-surface-variant);
+}
