@@ -146,6 +146,23 @@ class CohortDefinition(BaseModel):
     maxParticipantsPerCohort: Annotated[int | None, Field(ge=1)] = None
 
 
+class ApiKeyType(StrEnum):
+    GEMINI = "GEMINI"
+    VERTEX_AI = "VERTEX_AI"
+    OPENAI = "OPENAI"
+    CLAUDE = "CLAUDE"
+    OLLAMA = "OLLAMA"
+
+
+class AgentModelSettings(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    apiType: Annotated[ApiKeyType, Field(title="ApiKeyType")]
+    modelName: str
+
+
 class StageTextConfig(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -360,15 +377,19 @@ class PrivateChatStageConfig(BaseModel):
     timeLimitInMinutes: Annotated[int | None, Field(ge=1)] = None
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     isTurnBasedChat: bool | None = None
+    isTurnBasedChatGroupStyle: bool | None = None
     minNumberOfTurns: float | None = None
     maxNumberOfTurns: float | None = None
     preventCancellation: bool | None = None
+    preventAgentEnd: bool | None = None
+    agentTimeoutSeconds: Annotated[int | None, Field(ge=1)] = None
 
 
 class ProfileType(StrEnum):
     DEFAULT = "DEFAULT"
     DEFAULT_GENDERED = "DEFAULT_GENDERED"
     ANONYMOUS_ANIMAL = "ANONYMOUS_ANIMAL"
+    ANONYMOUS_ANIMAL_NO_NUMBER = "ANONYMOUS_ANIMAL_NO_NUMBER"
     ANONYMOUS_PARTICIPANT = "ANONYMOUS_PARTICIPANT"
 
 
@@ -635,23 +656,6 @@ class Type(StrEnum):
     mediator = "mediator"
 
 
-class ApiKeyType(StrEnum):
-    GEMINI = "GEMINI"
-    VERTEX_AI = "VERTEX_AI"
-    OPENAI = "OPENAI"
-    CLAUDE = "CLAUDE"
-    OLLAMA = "OLLAMA"
-
-
-class AgentModelSettings(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    apiType: Annotated[ApiKeyType, Field(title="ApiKeyType")]
-    modelName: str
-
-
 class ParticipantProfileBase(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -807,6 +811,8 @@ class AgentChatSettings(BaseModel):
     minMessagesBeforeResponding: int
     canSelfTriggerCalls: bool
     maxResponses: int | None = None
+    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
+    minNumberOfMessages: Annotated[int | None, Field(ge=0)] = None
     initialMessage: str
 
 
@@ -1044,7 +1050,14 @@ class ChatStageConfig(BaseModel):
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     discussions: list[DefaultChatDiscussion | CompareChatDiscussion]
     isTurnBased: bool | None = None
+    randomizeTurnOrderEachCycle: bool | None = None
+    personaPositionPrompt: str | None = None
+    additionalParticipantInstructions: str | None = None
+    minNumberOfMessages: Annotated[int | None, Field(ge=0)] = None
+    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
     enableReactionsAndReplies: bool | None = None
+    agentTimeoutSeconds: Annotated[int | None, Field(ge=1)] = None
+    preventAgentEnd: bool | None = None
 
 
 class RankingStageConfig(
@@ -1112,6 +1125,9 @@ class Experiment(BaseModel):
     ) = None
     variableMap: Annotated[dict[str, str] | None, Field(title="VariableMap")] = None
     cohortDefinitions: list[CohortDefinition] | None = None
+    timeoutMessageLimit: float | None = None
+    useNeutralTimeoutResponses: bool | None = None
+    spawnedAgentModelSettings: AgentModelSettings | None = None
 
 
 class ExperimentTemplate(BaseModel):
@@ -1368,6 +1384,7 @@ class TransferStageConfig(BaseModel):
         | ConditionAutoTransferConfig
         | None
     ) = None
+    treatmentIndex: Annotated[int | None, Field(ge=0)] = None
 
 
 class ConditionAutoTransferConfig(BaseModel):
@@ -1427,6 +1444,7 @@ class ChatPromptConfig(BaseModel):
         | StageContextPromptItem
         | ChatMediatorInstructionsPromptItem
         | ChatParticipantInstructionsPromptItem
+        | OtherProfileContextsPromptItem
         | PromptItemGroup
     ]
     includeScaffoldingInPrompt: bool | None = None
@@ -1499,6 +1517,15 @@ class ChatParticipantInstructionsPromptItem(BaseModel):
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
+class OtherProfileContextsPromptItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    type: Literal["OTHER_PROFILE_CONTEXTS"] = "OTHER_PROFILE_CONTEXTS"
+    condition: ComparisonCondition | ConditionGroup | None = None
+
+
 class PromptItemGroup(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1513,6 +1540,7 @@ class PromptItemGroup(BaseModel):
         | StageContextPromptItem
         | ChatMediatorInstructionsPromptItem
         | ChatParticipantInstructionsPromptItem
+        | OtherProfileContextsPromptItem
         | PromptItemGroup
     ]
     shuffleConfig: ShuffleConfig | None = None
@@ -1580,6 +1608,7 @@ class GenericPromptConfig(BaseModel):
         | StageContextPromptItem
         | ChatMediatorInstructionsPromptItem
         | ChatParticipantInstructionsPromptItem
+        | OtherProfileContextsPromptItem
         | PromptItemGroup
     ]
     includeScaffoldingInPrompt: bool | None = None

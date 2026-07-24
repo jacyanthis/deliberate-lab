@@ -31,6 +31,7 @@ import {
   DEFAULT_MEDIATOR_GROUP_CHAT_PROMPT_INSTRUCTIONS,
   DEFAULT_MEDIATOR_GROUP_CHAT_TURN_TAKING_PROMPT_INSTRUCTIONS,
   ChatStageConfig,
+  rewriteDescriptionsForRequiredResponse,
 } from '@deliberation-lab/utils';
 import {
   getAgentMediatorPrompt,
@@ -125,14 +126,84 @@ export async function getFirestoreDataForStructuredPrompt(
         getFirestoreParticipant(experimentId, id),
       ),
     )) as ParticipantProfileExtended[];
+    // A group-chat mediator must also see any observers: contextParticipantIds
+    // is built from the non-observer turn-order list (chat.triggers strips
+    // observers), so an observer's answers would otherwise be missing from the
+    // mediator's prompt. Re-add any cohort observers not already present; with
+    // no observers this adds nothing. Gated to group CHAT so
+    // single-participant private chats (and the rep-suffix re-add below) are
+    // unaffected.
+    if (
+      userProfile.type === UserType.MEDIATOR &&
+      promptConfig.type === StageKind.CHAT
+    ) {
+      const cohortObservers = await getFirestoreActiveParticipants(
+        experimentId,
+        cohortId,
+        null,
+        false,
+        true, // includeObservers
+      );
+      for (const observer of cohortObservers) {
+        if (
+          observer.isObserver &&
+          !answerParticipants.some((a) => a.publicId === observer.publicId)
+        ) {
+          answerParticipants.push(observer);
+        }
+      }
+    }
   } else if (userProfile.type === UserType.PARTICIPANT) {
-    // Participant only needs their own context
+    // Participant only needs their own context.
     answerParticipants = [
       (await getFirestoreParticipant(experimentId, userProfile.privateId))!,
     ];
   } else if (userProfile.type === UserType.MEDIATOR) {
-    // Mediator in group context needs all participants
-    answerParticipants = activeParticipants;
+    // A mediator in a group context needs all participants, including
+    // observers: an observer's variables and prior-stage answers can drive
+    // the prompt, and observers are otherwise filtered out of
+    // activeParticipants.
+    answerParticipants = await getFirestoreActiveParticipants(
+      experimentId,
+      cohortId,
+      null,
+      false,
+      true, // includeObservers
+    );
+  }
+
+  // A representative agent (spawned with publicId `${observer.publicId}-agent`
+  // in the observer's cohort) also needs the observer it stands in for, so
+  // its prompt surfaces the observer's prior-stage answers. This runs
+  // regardless of how answerParticipants was built above: the rep's own id is
+  // normally passed as contextParticipantIds, so it cannot live in the
+  // PARTICIPANT branch alone.
+  const repSuffix = '-agent';
+  if (
+    answerParticipants.some(
+      (p) => p?.agentConfig && p.publicId?.endsWith(repSuffix),
+    )
+  ) {
+    const cohortMembers = await getFirestoreActiveParticipants(
+      experimentId,
+      cohortId,
+      null,
+      false,
+      true, // includeObservers
+    );
+    for (const rep of [...answerParticipants]) {
+      if (!(rep?.agentConfig && rep.publicId?.endsWith(repSuffix))) continue;
+      const observerPublicId = rep.publicId.slice(0, -repSuffix.length);
+      const observer = cohortMembers.find(
+        (m) => m.publicId === observerPublicId && m.isObserver,
+      );
+      if (
+        observer &&
+        !answerParticipants.some((a) => a.publicId === observer.publicId)
+      ) {
+        answerParticipants.push(observer);
+      }
+    }
   }
 
   for (const item of promptConfig.prompt) {
@@ -315,6 +386,9 @@ export async function getPromptFromConfig(
   userProfile: ParticipantProfileExtended | MediatorProfileExtended,
   promptConfig: BasePromptConfig,
   contextParticipantIds?: string[], // Optional: specific participant IDs for context (e.g., for private chats)
+  // Set when the call sends the conversation as role-tagged messages, so the
+  // current chat's transcript is not also rendered into the prompt text.
+  omitCurrentChatHistory = false,
 ): Promise<string> {
   // Get Firestore data used to construct prompt
   const promptData = await getFirestoreDataForStructuredPrompt(
@@ -334,6 +408,8 @@ export async function getPromptFromConfig(
     promptData,
     userProfile,
     promptConfig.includeScaffoldingInPrompt,
+    '',
+    omitCurrentChatHistory,
   );
 
   // Add structured output if relevant
@@ -343,8 +419,11 @@ export async function getPromptFromConfig(
   let structuredOutputConfig = promptConfig.structuredOutputConfig;
 
   if (isTurnBased && structuredOutputConfig?.schema?.properties) {
-    const sanitizedProperties = structuredOutputConfig.schema.properties.filter(
-      (prop) => prop.name !== 'shouldRespond',
+    const sanitizedProperties = rewriteDescriptionsForRequiredResponse(
+      structuredOutputConfig.schema.properties.filter(
+        (prop) => prop.name !== 'shouldRespond',
+      ),
+      userProfile.type === UserType.MEDIATOR,
     );
     structuredOutputConfig = {
       ...structuredOutputConfig,
@@ -551,6 +630,7 @@ async function processPromptItems(
   includeScaffolding: boolean,
   // Position prefix for nested groups, mixed into shuffle seeds.
   seedNamespace = '',
+  omitCurrentChatHistory = false,
 ): Promise<string> {
   const experiment = promptData.experiment;
   const items: string[] = [];
@@ -630,9 +710,12 @@ async function processPromptItems(
             ? DEFAULT_AGENT_PARTICIPANT_CHAT_TURN_TAKING_PROMPT
             : DEFAULT_AGENT_PARTICIPANT_CHAT_PROMPT,
         );
+        const extraParticipantInstr = (stage as ChatStageConfig)
+          ?.additionalParticipantInstructions;
+        if (extraParticipantInstr) items.push(extraParticipantInstr);
         break;
       }
-      case PromptItemType.PROFILE_CONTEXT:
+      case PromptItemType.PROFILE_CONTEXT: {
         const profileContext = getProfileContextForPrompt(
           userProfile,
           includeScaffolding,
@@ -641,6 +724,7 @@ async function processPromptItems(
           items.push(profileContext);
         }
         break;
+      }
       case PromptItemType.PROFILE_INFO:
         items.push(
           getProfileInfoForPrompt(userProfile, includeScaffolding, stageId),
@@ -659,8 +743,23 @@ async function processPromptItems(
             `\n--- Previously completed stages chronologically (read only) ---`,
           );
         }
+        const stageBlocks: string[] = [];
+        const flushStageBlocks = () => {
+          if (stageBlocks.length > 0) {
+            // Only the last block keeps its trailing newline.
+            items.push(
+              stageBlocks
+                .map((b, i) =>
+                  i < stageBlocks.length - 1 ? b.replace(/\n+$/, '') : b,
+                )
+                .join('\n\n'),
+            );
+            stageBlocks.length = 0;
+          }
+        };
         for (const id of stageContextIds) {
           if (id === stageId && labelStages) {
+            flushStageBlocks();
             items.push(`\n--- Current stage ---`);
           }
           // Resolve template variables in stage config before formatting
@@ -675,15 +774,21 @@ async function processPromptItems(
             stage: resolvedStage,
           };
 
-          items.push(
-            getStageContextForPrompt(
-              promptData.participants,
-              resolvedStageContext,
-              promptItem,
-              includeScaffolding,
-            ),
+          const stageBlock = getStageContextForPrompt(
+            promptData.participants,
+            resolvedStageContext,
+            promptItem,
+            includeScaffolding,
+            cohortId,
+            omitCurrentChatHistory &&
+              id === stageId &&
+              resolvedStage.kind === StageKind.PRIVATE_CHAT,
           );
+          if (stageBlock) {
+            stageBlocks.push(stageBlock);
+          }
         }
+        flushStageBlocks();
         break;
       case PromptItemType.GROUP:
         const promptGroup = promptItem as PromptItemGroup;
@@ -733,9 +838,28 @@ async function processPromptItems(
           userProfile,
           includeScaffolding,
           `${seedNamespace}${itemIndex}.`,
+          omitCurrentChatHistory,
         );
         if (groupText) items.push(groupText);
         break;
+      case PromptItemType.OTHER_PROFILE_CONTEXTS: {
+        // Render each other agent's persona under its display name.
+        const others = promptData.participants.filter(
+          (p) =>
+            p.agentConfig?.promptContext && p.publicId !== userProfile.publicId,
+        );
+        if (others.length > 0) {
+          items.push(
+            others
+              .map(
+                (p) =>
+                  `${p.name ?? p.publicId}:\n${p.agentConfig?.promptContext}`,
+              )
+              .join('\n\n'),
+          );
+        }
+        break;
+      }
       default:
         break;
     }
@@ -756,31 +880,76 @@ function getStageContextForPrompt(
   stageContext: StageContextData,
   item: StageContextPromptItem,
   includeScaffolding: boolean,
+  cohortId: string,
+  omitChatHistory = false,
 ): string {
   const stage = stageContext.stage;
   const textItems: string[] = [];
 
-  // Include name of stage if scaffolding
-  if (includeScaffolding) {
+  // Include name of stage if scaffolding (items can opt out per stage)
+  if (includeScaffolding && item.includeStageDisplay !== false) {
     textItems.push(`[Stage: ${stage.name ?? stage.id}]`);
   }
 
   if (item.includePrimaryText && stage.descriptions.primaryText.trim() !== '') {
     textItems.push(`* Stage description: ${stage.descriptions.primaryText}`);
   }
-  if (item.includeInfoText) {
+  if (item.includeInfoText && stage.descriptions.infoText.trim() !== '') {
     textItems.push(`* Additional info: ${stage.descriptions.infoText}`);
   }
   // Note: Help text not included since the field has been deprecated
 
-  // Always include stage display (with answers if specified by prompt item)
-  const stageDisplay = stageManager.getStageDisplayForPrompt(
-    stage,
-    item.includeParticipantAnswers ? participants : [],
-    stageContext,
-    includeScaffolding,
-  );
-  textItems.push(stageDisplay);
+  // Render participant answers for this stage.
+  //
+  // Inactive personas carry stored content in agentConfig.promptContext; it
+  // is self-describing and is included as-is inside this same stage block,
+  // alongside the human, in a per-cohort shuffled order, so a mediator sees
+  // every participant's block in one uniform list. With no persona agents
+  // this is byte-identical to the prior output.
+  const realParticipants = item.includeParticipantAnswers
+    ? participants.filter((p) => !p.agentConfig?.isInactivePersona)
+    : [];
+  // Inactive personas' content must be included whenever participant answers
+  // are (mirroring realParticipants above), not just when the rendered stage
+  // is a private chat; otherwise a summarizing mediator would silently drop
+  // them.
+  const personaAgents = item.includeParticipantAnswers
+    ? participants.filter(
+        (p) => p.agentConfig?.isInactivePersona && p.agentConfig?.promptContext,
+      )
+    : [];
+
+  let stageDisplay: string;
+  if (personaAgents.length === 0) {
+    stageDisplay = stageManager.getStageDisplayForPrompt(
+      stage,
+      realParticipants,
+      stageContext,
+      includeScaffolding,
+      omitChatHistory,
+    );
+  } else {
+    const blocks: string[] = [
+      ...realParticipants.map((p) =>
+        stageManager.getStageDisplayForPrompt(
+          stage,
+          [p],
+          stageContext,
+          includeScaffolding,
+        ),
+      ),
+      ...personaAgents.map((p) => p.agentConfig?.promptContext ?? ''),
+    ];
+    stageDisplay = shuffleWithSeed(blocks, `${cohortId}::${stage.id}`).join(
+      '\n\n',
+    );
+  }
+  if (stageDisplay) {
+    if (textItems.length > 0) {
+      textItems.push(''); // blank line before the stage content
+    }
+    textItems.push(stageDisplay);
+  }
 
   return textItems.join('\n');
 }
