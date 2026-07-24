@@ -15,6 +15,7 @@ import {
   ProlificConfig,
   StageConfig,
   StageKind,
+  SYSTEM_VARIABLE_NAMESPACE,
   VariableConfig,
   MultiValueVariableConfigType,
   requiresValues,
@@ -201,6 +202,14 @@ export class ExperimentEditor extends Service {
             `${stage.name}: minimum total messages (${stageMin}) exceeds the stage's maximum (${stageMax})`,
           );
         }
+      }
+
+      // Block save if any stage's id collides with the participant-variable
+      // sentinel, since condition-dependency fetching would silently skip it.
+      if (stage.id === SYSTEM_VARIABLE_NAMESPACE) {
+        errors.push(
+          `The stage id "${SYSTEM_VARIABLE_NAMESPACE}" is reserved for tracking the system variables. Please rename it.`,
+        );
       }
       if (
         stage.kind === StageKind.SURVEY ||
