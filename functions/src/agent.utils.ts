@@ -26,10 +26,13 @@ class RetryTimeoutError extends Error {
  * retryable, so one hung call is retried within the budget instead of
  * consuming all of it.
  */
-// Per-attempt timeout for turn-based model calls. Sized so roughly six
-// attempts fit the overall turn-based deadline while still giving a single
-// call enough time to return.
+// Per-attempt window for a turn-based model call. If a call is still pending
+// after this, another is hedged alongside it, bounded by the overall deadline.
 const TURN_BASED_PER_ATTEMPT_TIMEOUT_MS = 30000;
+// Minimum time between successive turn-based calls, so a rejected call is
+// re-issued no sooner than this after the prior one was sent instead of
+// immediately. Lets a rate-limited quota recover within the deadline.
+const TURN_BASED_MIN_RETRY_INTERVAL_MS = 1000;
 // Max times an OK-but-rejected (e.g. empty) response is re-rolled before giving
 // up, so a persistently empty response can't loop until the overall deadline.
 const MAX_EMPTY_RETRIES = 2;
@@ -93,9 +96,8 @@ export async function processModelResponse(
   // per-attempt window elapses without an acceptable response, start another
   // request but keep the earlier ones in flight, and take whichever returns an
   // acceptable response first. Cuts the occasional long tail where one call is
-  // merely slow. Bounded by the overall retry deadline (and a hedge cap).
+  // merely slow. Bounded by the overall retry deadline.
   if (maxRetries === null) {
-    const MAX_HEDGES = 8;
     interface Hedge {
       logId: string;
       settled: boolean;
@@ -106,6 +108,8 @@ export async function processModelResponse(
     const hedges: Hedge[] = [];
     let lastLogId = '';
     let lastResponse: ModelResponse = {status: ModelResponseStatus.NONE};
+    // When the most recent call was sent, to space out re-issued calls.
+    let lastHedgeSentMs = 0;
 
     const startHedge = () => {
       const index = hedges.length;
@@ -124,6 +128,7 @@ export async function processModelResponse(
       });
       lastLogId = log.id;
       const queryTimestamp = Timestamp.now();
+      lastHedgeSentMs = Date.now();
       const hedge: Hedge = {
         logId: log.id,
         settled: false,
@@ -217,11 +222,25 @@ export async function processModelResponse(
         maxRetryDurationMs === null
           ? true
           : maxRetryDurationMs - (Date.now() - retryStartMs) > 0;
-      if (budgetLeft && hedges.length < MAX_HEDGES) {
+      if (budgetLeft) {
+        // Hold off until the minimum interval since the last call has passed.
+        // A slow call already outlasts this, so only fast failures wait here.
+        const sinceLastSent = Date.now() - lastHedgeSentMs;
+        if (sinceLastSent < TURN_BASED_MIN_RETRY_INTERVAL_MS) {
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              TURN_BASED_MIN_RETRY_INTERVAL_MS - sinceLastSent,
+            ),
+          );
+        }
         startHedge();
       } else if (hedges.every((h) => h.settled)) {
-        // Out of budget/hedges and nothing acceptable: return the last result.
-        return {response: lastResponse, logId: lastLogId, retryTimedOut: false};
+        // Budget exhausted (the deadline was reached while the last call was in
+        // flight) with nothing acceptable: report a timeout, like the deadline
+        // check above, so the caller posts the timeout message rather than the
+        // pop-up meant for unrecoverable errors.
+        return {response: lastResponse, logId: lastLogId, retryTimedOut: true};
       }
     }
   }
