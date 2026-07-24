@@ -825,6 +825,13 @@
         },
         "enableReactionsAndReplies": {
           "type": "boolean"
+        },
+        "agentTimeoutSeconds": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "preventAgentEnd": {
+          "type": "boolean"
         }
       }
     },
@@ -1482,6 +1489,13 @@
         },
         "preventCancellation": {
           "type": "boolean"
+        },
+        "preventAgentEnd": {
+          "type": "boolean"
+        },
+        "agentTimeoutSeconds": {
+          "minimum": 1,
+          "type": "integer"
         }
       }
     },
@@ -1531,6 +1545,10 @@
             },
             {
               "const": "ANONYMOUS_ANIMAL",
+              "type": "string"
+            },
+            {
+              "const": "ANONYMOUS_ANIMAL_NO_NUMBER",
               "type": "string"
             },
             {
@@ -4594,6 +4612,12 @@
                   "items": {
                     "$ref": "#/$defs/CohortDefinition"
                   }
+                },
+                "timeoutMessageLimit": {
+                  "type": ["number", "null"]
+                },
+                "useNeutralTimeoutResponses": {
+                  "type": "boolean"
                 },
                 "spawnedAgentModelSettings": {
                   "anyOf": [

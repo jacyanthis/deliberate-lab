@@ -5,10 +5,14 @@ import {
   BasePromptConfig,
   PromptItemType,
   StageKind,
+  ComparisonOperator,
+  ComparisonCondition,
+  SYSTEM_VARIABLE_NAMESPACE,
 } from '@deliberation-lab/utils';
 import {
   getFirestoreDataForStructuredPrompt,
   getPromptFromConfig,
+  shouldIncludePromptItem,
 } from './structured_prompt.utils';
 import * as firestoreUtils from './utils/firestore';
 
@@ -656,6 +660,72 @@ describe('structured_prompt.utils', () => {
         [human.privateId],
       );
       expect(prompt).toContain('T=HumanTopic');
+    });
+  });
+  describe('shouldIncludePromptItem (participant-variable conditions)', () => {
+    const variableCondition = (value: string): ComparisonCondition => ({
+      id: 'c1',
+      type: 'comparison',
+      target: {stageId: SYSTEM_VARIABLE_NAMESPACE, questionId: 'treatment'},
+      operator: ComparisonOperator.EQUALS,
+      value,
+    });
+    const participant = (treatment: string): ParticipantProfileExtended =>
+      ({
+        publicId: 'participant-public-1',
+        variableMap: {treatment},
+      }) as unknown as ParticipantProfileExtended;
+
+    it('includes a private-chat item when the participant variable matches', () => {
+      const item = {
+        type: PromptItemType.TEXT,
+        text: 'x',
+        condition: variableCondition('A'),
+      };
+      expect(
+        shouldIncludePromptItem(
+          item,
+          StageKind.PRIVATE_CHAT,
+          [participant('A')],
+          {},
+        ),
+      ).toBe(true);
+    });
+
+    it('excludes a private-chat item when the participant variable does not match', () => {
+      const item = {
+        type: PromptItemType.TEXT,
+        text: 'x',
+        condition: variableCondition('A'),
+      };
+      expect(
+        shouldIncludePromptItem(
+          item,
+          StageKind.PRIVATE_CHAT,
+          [participant('B')],
+          {},
+        ),
+      ).toBe(false);
+    });
+
+    it('includes items with no condition, and does not filter outside private chat', () => {
+      const noCond = {type: PromptItemType.TEXT, text: 'x'};
+      expect(
+        shouldIncludePromptItem(
+          noCond,
+          StageKind.PRIVATE_CHAT,
+          [participant('A')],
+          {},
+        ),
+      ).toBe(true);
+      const item = {
+        type: PromptItemType.TEXT,
+        text: 'x',
+        condition: variableCondition('A'),
+      };
+      expect(
+        shouldIncludePromptItem(item, StageKind.CHAT, [participant('B')], {}),
+      ).toBe(true);
     });
   });
 });

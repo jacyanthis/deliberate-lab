@@ -59,8 +59,15 @@ export interface ParticipantProfile extends UserProfileBase {
   timestamps: ProgressTimestamps;
   anonymousProfiles: Record<string, AnonymousProfileMetadata>;
   connected: boolean | null;
+  // Neutral responses already used in this participant's chats after model
+  // timeouts, drawn without replacement. After three, a further timeout ends
+  // the study with the restart pop-up.
+  neutralTimeoutResponses?: string[];
+  // Number of timeout messages sent to this participant by turn-based agents.
+  timeoutMessageCount?: number;
   isObserver?: boolean; // Read-only observer participant type
   hasRepresentative?: boolean; // Whether the observer has a representative agent spawned
+  isQuizzed?: boolean; // Whether this round's treatment includes the periodic group-chat quiz (hoisted from _isQuizzed at the transfer)
   otherAgentGeneration?: {
     numOtherAgents: number;
     // Number of inactive personas to spawn alongside numOtherAgents.
@@ -78,6 +85,13 @@ export interface AnonymousProfileMetadata {
   name: string;
   repeat: number; // e.g., if 1, then profile is Cat 2; if 2, then Cat 3
   avatar: string;
+}
+
+/** Participant observation thought structure. */
+export interface ParticipantThought {
+  id: string;
+  text: string;
+  timestamp: UnifiedTimestamp;
 }
 
 /** Participant profile available in private participants collection. */
@@ -127,6 +141,9 @@ export enum ParticipantStatus {
   // Deleted (e.g., if cohort was deleted).
   // The participant will not be part of dashboard, data download, etc.
   DELETED = 'DELETED',
+  // Turn-based chat agent's model call failed to return within the stage's
+  // response deadline; a blocking pop-up debriefs the participant.
+  API_FAILURE = 'API_FAILURE',
 }
 
 // ************************************************************************* //
@@ -212,6 +229,7 @@ export function createParticipantProfileExtended(
     agentConfig: config.agentConfig ?? null,
     isObserver: config.isObserver ?? false,
     hasRepresentative: config.hasRepresentative ?? false,
+    isQuizzed: config.isQuizzed ?? false,
     otherAgentGeneration: config.otherAgentGeneration ?? {
       numOtherAgents: 0,
     },
@@ -307,6 +325,12 @@ export function setProfile(
     } else if (profileType === ProfileType.ANONYMOUS_ANIMAL) {
       // Use animal profile (default)
       config.name = `${mainProfile.name}${mainProfile.repeat === 0 ? '' : ` ${mainProfile.repeat + 1}`}`;
+      config.avatar = mainProfile.avatar;
+    } else if (profileType === ProfileType.ANONYMOUS_ANIMAL_NO_NUMBER) {
+      // Same in-order, looping animal assignment as ANONYMOUS_ANIMAL, but never
+      // append a repeat number. Repeats are allowed (e.g. the 41st participant
+      // is "Bear" again, not "Bear 2").
+      config.name = mainProfile.name;
       config.avatar = mainProfile.avatar;
     }
     // Note: ProfileType.DEFAULT should not reach here as setAnonymousProfile would be false

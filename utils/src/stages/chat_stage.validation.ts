@@ -79,6 +79,8 @@ export const ChatStageConfigData = Type.Composite(
           Type.Union([Type.Integer({minimum: 1}), Type.Null()]),
         ),
         enableReactionsAndReplies: Type.Optional(Type.Boolean()),
+        agentTimeoutSeconds: Type.Optional(Type.Integer({minimum: 1})),
+        preventAgentEnd: Type.Optional(Type.Boolean()),
       },
       strict,
     ),

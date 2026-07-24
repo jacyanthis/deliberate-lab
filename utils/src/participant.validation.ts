@@ -156,6 +156,7 @@ export const CreateParticipantData = Type.Object(
     prolificId: Type.Optional(Type.Union([Type.Null(), Type.String()])),
     isObserver: Type.Optional(Type.Boolean()),
     hasRepresentative: Type.Optional(Type.Boolean()),
+    isQuizzed: Type.Optional(Type.Boolean()),
     otherAgentGeneration: Type.Optional(
       Type.Object({
         numOtherAgents: Type.Number(),
@@ -206,6 +207,7 @@ export const ParticipantStatusData = Type.Union([
   Type.Literal(ParticipantStatus.ATTENTION_TIMEOUT),
   Type.Literal(ParticipantStatus.BOOTED_OUT),
   Type.Literal(ParticipantStatus.DELETED),
+  Type.Literal(ParticipantStatus.API_FAILURE),
 ]);
 
 export const ProgressTimestampsSchema = Type.Object({
@@ -222,3 +224,27 @@ export const AnonymousProfileSchema = Type.Object({
   repeat: Type.Number(),
   avatar: Type.String(),
 });
+
+// ************************************************************************* //
+// submitParticipantThought endpoint for participants                        //
+// ************************************************************************* //
+export const SubmitParticipantThoughtData = Type.Object(
+  {
+    experimentId: Type.String({minLength: 1}),
+    participantId: Type.String({minLength: 1}),
+    stageId: Type.String({minLength: 1}),
+    text: Type.String({minLength: 1}),
+    // Quiz checkpoint being answered. When set (and the participant is
+    // quizzed), submitting clears the chat's quizPauseCheckpoint and resumes
+    // the paused group chat turn.
+    checkpoint: Type.Optional(Type.Number()),
+    // Quiz Likert rating (1-7), saved as a structured field alongside the
+    // free-text thought (not embedded in the text).
+    rating: Type.Optional(Type.Number()),
+  },
+  strict,
+);
+
+export type SubmitParticipantThoughtData = Static<
+  typeof SubmitParticipantThoughtData
+>;

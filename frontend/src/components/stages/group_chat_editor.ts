@@ -9,7 +9,10 @@ import {AuthService} from '../../services/auth.service';
 
 import {ExperimentEditor} from '../../services/experiment.editor';
 
-import {ChatStageConfig} from '@deliberation-lab/utils';
+import {
+  ChatStageConfig,
+  DEFAULT_AGENT_TIMEOUT_SECONDS,
+} from '@deliberation-lab/utils';
 
 import {styles} from './group_chat_editor.scss';
 
@@ -31,7 +34,7 @@ export class ChatEditor extends MobxLitElement {
     return html`
       <div class="title">Conversation settings</div>
       ${this.renderTimeLimit()} ${this.renderTurnBasedSetting()}
-      ${this.renderReactionsSetting()}
+      ${this.renderReactionsSetting()} ${this.renderPreventAgentEndSetting()}
       <div class="divider"></div>
       <div class="title">Message limits</div>
       ${this.renderMinNumberOfMessages()} ${this.renderMaxNumberOfMessages()}
@@ -78,6 +81,31 @@ export class ChatEditor extends MobxLitElement {
             @input=${updateNum}
           />
         </div>
+        ${this.renderQuizCadenceNote()}
+      </div>
+    `;
+  }
+
+  private renderQuizCadenceNote() {
+    const hasQuizzedTreatment = (
+      this.experimentEditor.experiment.variableConfigs ?? []
+    ).some(
+      (config) =>
+        'values' in config &&
+        ((config as {values?: string[]}).values ?? []).some((value) => {
+          try {
+            return JSON.parse(value)?.['_isQuizzed'] === true;
+          } catch {
+            return false;
+          }
+        }),
+    );
+    if (!hasQuizzedTreatment) return nothing;
+    return html`
+      <div class="description">
+        ⚠️ A treatment sets <code>_isQuizzed</code>: the chat pauses for a quiz
+        at each third of the minimum message count (up to 3 quizzes; fewer if
+        the minimum is under 3).
       </div>
     `;
   }
@@ -168,6 +196,40 @@ export class ChatEditor extends MobxLitElement {
             order each cycle instead of keeping the starting order.
           </div>
         </div>
+        ${this.renderAgentTimeout()}
+      </div>
+    `;
+  }
+
+  private renderAgentTimeout() {
+    if (!this.stage?.isTurnBased) return nothing;
+
+    const updateTimeout = (e: InputEvent) => {
+      const val = (e.target as HTMLInputElement).valueAsNumber;
+      this.experimentEditor.updateStage({
+        ...this.stage!,
+        agentTimeoutSeconds:
+          val > 0 ? Math.floor(val) : DEFAULT_AGENT_TIMEOUT_SECONDS,
+      });
+    };
+
+    return html`
+      <div class="number-input tab">
+        <label for="agentTimeout">
+          Agent response timeout in seconds. If an agent's response does not
+          arrive in time, the participant is shown an error pop-up and the
+          study's debrief.
+        </label>
+        <input
+          type="number"
+          id="agentTimeout"
+          name="agentTimeout"
+          min="1"
+          .value=${this.stage?.agentTimeoutSeconds ??
+          DEFAULT_AGENT_TIMEOUT_SECONDS}
+          ?disabled=${!this.experimentEditor.canEditStages}
+          @input=${updateTimeout}
+        />
       </div>
     `;
   }
@@ -193,6 +255,29 @@ export class ChatEditor extends MobxLitElement {
             Reactions and replies: Allow participants to react to and reply to
             each other's messages.
           </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderPreventAgentEndSetting() {
+    return html`
+      <div class="config-item">
+        <div class="checkbox-wrapper">
+          <md-checkbox
+            touch-target="wrapper"
+            ?checked=${this.stage?.preventAgentEnd ?? false}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @change=${(e: Event) => {
+              const checked = (e.target as HTMLInputElement).checked;
+              this.experimentEditor.updateStage({
+                ...this.stage!,
+                preventAgentEnd: checked,
+              });
+            }}
+          >
+          </md-checkbox>
+          <div>Prevent agents from ending chat</div>
         </div>
       </div>
     `;

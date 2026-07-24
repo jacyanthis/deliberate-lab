@@ -92,7 +92,14 @@ export class PrivateChatView extends MobxLitElement {
       chatMessages[chatMessages.length - 1].senderId === publicId &&
       !this.responseTimeout.timedOut;
 
-    // Check if max number of turns reached
+    // True once the participant's last message has gone unanswered past the
+    // response timeout.
+    const hasTimedOut =
+      chatMessages.length > 0 &&
+      chatMessages[chatMessages.length - 1].senderId === publicId &&
+      this.responseTimeout.timedOut;
+
+    // Check if max number of turns reached (but only after response received)
     const maxTurnsReached =
       this.stage.maxNumberOfTurns !== null &&
       participantMessageCount >= this.stage.maxNumberOfTurns;
@@ -130,7 +137,7 @@ export class PrivateChatView extends MobxLitElement {
     // Disable input if turn-taking is set and latest message
     // is from participant OR if conversation is over
     const isDisabledInput = () => {
-      if (isConversationOver) {
+      if (hasTimedOut || isConversationOver) {
         return true;
       }
       if (!this.stage?.isTurnBasedChat) {
@@ -184,6 +191,24 @@ export class PrivateChatView extends MobxLitElement {
           ? this.renderMinTimeMessage(elapsedMinutes)
           : nothing}
       </stage-footer>
+      ${hasTimedOut ? this.renderResponseTimeoutOverlay() : nothing}
+    `;
+  }
+
+  // Blocking overlay shown when the response timeout is reached.
+  private renderResponseTimeoutOverlay() {
+    return html`
+      <div class="response-timeout-overlay">
+        <div class="response-timeout-dialog">
+          <div class="response-timeout-title">
+            The chatbot message failed after trying for 2 minutes.
+          </div>
+          <div class="response-timeout-body">
+            Something went wrong and the discussion cannot continue. Please
+            restart the study or contact the researcher.
+          </div>
+        </div>
+      </div>
     `;
   }
 
