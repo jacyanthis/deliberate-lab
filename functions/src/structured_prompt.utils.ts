@@ -434,9 +434,6 @@ export async function getPromptFromConfig(
   userProfile: ParticipantProfileExtended | MediatorProfileExtended,
   promptConfig: BasePromptConfig,
   contextParticipantIds?: string[], // Optional: specific participant IDs for context (e.g., for private chats)
-  // Set when the call sends the conversation as role-tagged messages, so the
-  // current chat's transcript is not also rendered into the prompt text.
-  omitCurrentChatHistory = false,
 ): Promise<string> {
   // Get Firestore data used to construct prompt
   const promptData = await getFirestoreDataForStructuredPrompt(
@@ -456,8 +453,6 @@ export async function getPromptFromConfig(
     promptData,
     userProfile,
     promptConfig.includeScaffoldingInPrompt,
-    '',
-    omitCurrentChatHistory,
   );
 
   // Add structured output if relevant
@@ -734,7 +729,6 @@ async function processPromptItems(
   includeScaffolding: boolean,
   // Position prefix for nested groups, mixed into shuffle seeds.
   seedNamespace = '',
-  omitCurrentChatHistory = false,
 ): Promise<string> {
   const experiment = promptData.experiment;
   const items: string[] = [];
@@ -972,9 +966,6 @@ async function processPromptItems(
             promptItem,
             includeScaffolding,
             cohortId,
-            omitCurrentChatHistory &&
-              id === stageId &&
-              resolvedStage.kind === StageKind.PRIVATE_CHAT,
           );
           if (stageBlock) {
             stageBlocks.push(stageBlock);
@@ -1030,7 +1021,6 @@ async function processPromptItems(
           userProfile,
           includeScaffolding,
           `${seedNamespace}${itemIndex}.`,
-          omitCurrentChatHistory,
         );
         if (groupText) items.push(groupText);
         break;
@@ -1073,7 +1063,6 @@ function getStageContextForPrompt(
   item: StageContextPromptItem,
   includeScaffolding: boolean,
   cohortId: string,
-  omitChatHistory = false,
 ): string {
   const stage = stageContext.stage;
   const textItems: string[] = [];
@@ -1118,7 +1107,6 @@ function getStageContextForPrompt(
       realParticipants,
       stageContext,
       includeScaffolding,
-      omitChatHistory,
     );
   } else {
     const blocks: string[] = [
@@ -1128,7 +1116,6 @@ function getStageContextForPrompt(
           [p],
           stageContext,
           includeScaffolding,
-          omitChatHistory,
         ),
       ),
       ...personaAgents.map((p) => p.agentConfig?.promptContext ?? ''),
