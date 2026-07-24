@@ -90,6 +90,10 @@ export const ExperimentTemplateSchema = Type.Object(
         variableConfigs: Type.Optional(Type.Array(VariableConfigData)),
         variableMap: Type.Optional(Type.Record(Type.String(), Type.String())),
         cohortDefinitions: Type.Optional(Type.Array(CohortDefinitionSchema)),
+        timeoutMessageLimit: Type.Optional(
+          Type.Union([Type.Number(), Type.Null()]),
+        ),
+        useNeutralTimeoutResponses: Type.Optional(Type.Boolean()),
         spawnedAgentModelSettings: Type.Optional(
           Type.Union([AgentModelSettingsData, Type.Null()]),
         ),

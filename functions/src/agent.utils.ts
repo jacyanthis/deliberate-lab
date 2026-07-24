@@ -20,13 +20,28 @@ class RetryTimeoutError extends Error {
   }
 }
 
+/**
+ * A single model call exceeded the per-attempt timeout. Unlike
+ * RetryTimeoutError (the overall deadline, which gives up), this is
+ * retryable, so one hung call is retried within the budget instead of
+ * consuming all of it.
+ */
+// Per-attempt timeout for turn-based model calls. Sized so roughly six
+// attempts fit the overall turn-based deadline while still giving a single
+// call enough time to return.
+const TURN_BASED_PER_ATTEMPT_TIMEOUT_MS = 30000;
+// Max times an OK-but-rejected (e.g. empty) response is re-rolled before giving
+// up, so a persistently empty response can't loop until the overall deadline.
+const MAX_EMPTY_RETRIES = 2;
+
 async function withRetryTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
+  makeError: () => Error = () => new RetryTimeoutError(),
 ): Promise<T> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
-    timeout = setTimeout(() => reject(new RetryTimeoutError()), timeoutMs);
+    timeout = setTimeout(() => reject(makeError()), timeoutMs);
   });
 
   return Promise.race([promise, timeoutPromise]).finally(() => {
@@ -51,6 +66,12 @@ export async function processModelResponse(
   structuredOutputConfig?: StructuredOutputConfig,
   numRetries: number | null = 0,
   maxRetryDurationMs: number | null = null,
+  // Optional gate: when provided, an OK response for which this returns false is
+  // treated like a (retryable) API failure rather than a usable result. Used in
+  // must-respond contexts (e.g. turn-based group chat, where it is always the
+  // agent's turn) to reject empty/contentless responses so the agent retries
+  // instead of ever emitting an empty message.
+  isResponseAcceptable?: (response: ModelResponse) => boolean,
 ): Promise<{
   response: ModelResponse;
   logId: string;
@@ -59,6 +80,7 @@ export async function processModelResponse(
   let response = {status: ModelResponseStatus.NONE};
   let lastError: Error | undefined;
   let retryTimedOut = false;
+  let emptyRetries = 0;
   const maxRetries = numRetries;
   const initialDelay = 1000; // 1 second initial delay
   let logId = '';
@@ -66,11 +88,150 @@ export async function processModelResponse(
 
   // Convert prompt to string for logging (reused across retries)
   const promptForLog = formatPromptForLog(prompt);
+
+  // Turn-based path: hedge instead of abandoning a slow call. When the
+  // per-attempt window elapses without an acceptable response, start another
+  // request but keep the earlier ones in flight, and take whichever returns an
+  // acceptable response first. Cuts the occasional long tail where one call is
+  // merely slow. Bounded by the overall retry deadline (and a hedge cap).
+  if (maxRetries === null) {
+    const MAX_HEDGES = 8;
+    interface Hedge {
+      logId: string;
+      settled: boolean;
+      consumed: boolean;
+      response?: ModelResponse;
+      promise: Promise<void>;
+    }
+    const hedges: Hedge[] = [];
+    let lastLogId = '';
+    let lastResponse: ModelResponse = {status: ModelResponseStatus.NONE};
+
+    const startHedge = () => {
+      const index = hedges.length;
+      const log = createModelLogEntry({
+        experimentId,
+        cohortId,
+        participantId,
+        stageId,
+        userProfile,
+        publicId,
+        privateId,
+        description:
+          index > 0 ? `${description} (hedge ${index})` : description,
+        prompt: promptForLog,
+        createdTimestamp: Timestamp.now(),
+      });
+      lastLogId = log.id;
+      const queryTimestamp = Timestamp.now();
+      const hedge: Hedge = {
+        logId: log.id,
+        settled: false,
+        consumed: false,
+      } as Hedge;
+      hedge.promise = (async () => {
+        try {
+          const response = (await getAgentResponse(
+            apiKeyConfig,
+            prompt,
+            modelSettings,
+            generationConfig,
+            structuredOutputConfig,
+          )) as ModelResponse;
+          log.response = response;
+          log.queryTimestamp = queryTimestamp;
+          log.responseTimestamp = Timestamp.now();
+          hedge.response = response;
+        } catch (error) {
+          const err = error instanceof Error ? error : new Error(String(error));
+          console.log(err);
+          log.response = {
+            status: ModelResponseStatus.UNKNOWN_ERROR,
+            errorMessage: err.message,
+          };
+          log.queryTimestamp = queryTimestamp;
+          log.responseTimestamp = Timestamp.now();
+          hedge.response = {
+            status: ModelResponseStatus.UNKNOWN_ERROR,
+            errorMessage: err.message,
+          };
+        } finally {
+          writeModelLogEntry(experimentId, log);
+          hedge.settled = true;
+        }
+      })();
+      hedges.push(hedge);
+    };
+
+    const isAcceptable = (r: ModelResponse) =>
+      r.status === ModelResponseStatus.OK &&
+      (!isResponseAcceptable || isResponseAcceptable(r));
+    // Deterministic, non-retryable statuses (e.g. bad key, invalid config):
+    // hedging cannot help, so return immediately.
+    const isRetryable = (r: ModelResponse) =>
+      r.status === ModelResponseStatus.PROVIDER_UNAVAILABLE_ERROR ||
+      r.status === ModelResponseStatus.INTERNAL_ERROR ||
+      r.status === ModelResponseStatus.UNKNOWN_ERROR ||
+      r.status === ModelResponseStatus.REFUSAL_ERROR ||
+      r.status === ModelResponseStatus.LENGTH_ERROR ||
+      r.status === ModelResponseStatus.STRUCTURED_OUTPUT_PARSE_ERROR ||
+      r.status === ModelResponseStatus.QUOTA_ERROR;
+
+    startHedge();
+    for (;;) {
+      const remaining =
+        maxRetryDurationMs === null
+          ? TURN_BASED_PER_ATTEMPT_TIMEOUT_MS
+          : maxRetryDurationMs - (Date.now() - retryStartMs);
+      if (remaining <= 0) {
+        return {response: lastResponse, logId: lastLogId, retryTimedOut: true};
+      }
+      const windowMs = Math.min(remaining, TURN_BASED_PER_ATTEMPT_TIMEOUT_MS);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const windowElapsed = new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, windowMs);
+      });
+      const pending = hedges.filter((h) => !h.settled).map((h) => h.promise);
+      await Promise.race(
+        pending.length
+          ? [Promise.race(pending), windowElapsed]
+          : [windowElapsed],
+      );
+      if (timer) clearTimeout(timer);
+
+      for (const hedge of hedges) {
+        if (hedge.settled && !hedge.consumed) {
+          hedge.consumed = true;
+          lastResponse = hedge.response as ModelResponse;
+          if (isAcceptable(lastResponse) || !isRetryable(lastResponse)) {
+            return {
+              response: lastResponse,
+              logId: hedge.logId,
+              retryTimedOut: false,
+            };
+          }
+        }
+      }
+
+      const budgetLeft =
+        maxRetryDurationMs === null
+          ? true
+          : maxRetryDurationMs - (Date.now() - retryStartMs) > 0;
+      if (budgetLeft && hedges.length < MAX_HEDGES) {
+        startHedge();
+      } else if (hedges.every((h) => h.settled)) {
+        // Out of budget/hedges and nothing acceptable: return the last result.
+        return {response: lastResponse, logId: lastLogId, retryTimedOut: false};
+      }
+    }
+  }
+
   for (
     let attempt = 0;
     maxRetries === null || attempt <= maxRetries;
     attempt++
   ) {
+    let responseRejected = false;
     // Create a new log entry for each attempt
     const log = createModelLogEntry({
       experimentId,
@@ -105,6 +266,10 @@ export async function processModelResponse(
         generationConfig,
         structuredOutputConfig,
       );
+      // This loop only runs for fixed-retry (non-turn-based) calls; the
+      // turn-based path is hedged above and returns before here. The call is
+      // bounded by an overall retry deadline when one was given, otherwise
+      // unbounded.
       response = (await (remainingRetryMs === null
         ? request
         : withRetryTimeout(request, remainingRetryMs))) as ModelResponse;
@@ -113,6 +278,16 @@ export async function processModelResponse(
       log.response = response;
       log.queryTimestamp = queryTimestamp;
       log.responseTimestamp = responseTimestamp;
+
+      // A successful API call can still be unusable (e.g. empty content when
+      // the caller requires a real message): treat it like a failure and retry.
+      if (
+        response.status === ModelResponseStatus.OK &&
+        isResponseAcceptable &&
+        !isResponseAcceptable(response)
+      ) {
+        responseRejected = true;
+      }
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       console.log(error);
@@ -133,15 +308,31 @@ export async function processModelResponse(
     writeModelLogEntry(experimentId, log);
 
     // Check if we should retry
+    // In turn-based mode a give-up stalls the whole turn cycle instead of
+    // just skipping one speaker, so also retry errors that can differ on a
+    // re-roll (safety refusals, length caps, unparseable output, rate-limited
+    // quota) until they succeed or the deadline is reached. A bad key or
+    // invalid config is deterministic, so those still fail fast.
+    const turnBasedRetryableStatus =
+      maxRetries === null &&
+      (response.status === ModelResponseStatus.REFUSAL_ERROR ||
+        response.status === ModelResponseStatus.LENGTH_ERROR ||
+        response.status === ModelResponseStatus.STRUCTURED_OUTPUT_PARSE_ERROR ||
+        response.status === ModelResponseStatus.QUOTA_ERROR);
     const shouldRetry =
       !retryTimedOut &&
       (maxRetries === null || attempt < maxRetries) &&
-      (response.status === ModelResponseStatus.PROVIDER_UNAVAILABLE_ERROR ||
+      ((responseRejected && emptyRetries < MAX_EMPTY_RETRIES) ||
+        response.status === ModelResponseStatus.PROVIDER_UNAVAILABLE_ERROR ||
         response.status === ModelResponseStatus.INTERNAL_ERROR ||
-        response.status === ModelResponseStatus.UNKNOWN_ERROR);
+        response.status === ModelResponseStatus.UNKNOWN_ERROR ||
+        turnBasedRetryableStatus);
 
     if (shouldRetry) {
-      const baseDelay = initialDelay * Math.pow(2, attempt);
+      if (responseRejected) emptyRetries++;
+      // No inter-attempt delay for turn-based retries.
+      const baseDelay =
+        maxRetries === null ? 0 : initialDelay * Math.pow(2, attempt);
       // Clamp to remaining budget so the next attempt fires before the deadline.
       const delay =
         maxRetryDurationMs === null
@@ -156,7 +347,9 @@ export async function processModelResponse(
       const retryCount =
         maxRetries === null ? `${attempt + 1}` : `${attempt + 1}/${maxRetries}`;
       console.log(
-        `API error (${response.status}), retrying after ${delay}ms (attempt ${retryCount})`,
+        responseRejected
+          ? `Empty/unacceptable response, retrying after ${delay}ms (attempt ${retryCount})`
+          : `API error (${response.status}), retrying after ${delay}ms (attempt ${retryCount})`,
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
     } else {
