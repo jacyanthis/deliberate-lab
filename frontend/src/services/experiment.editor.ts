@@ -18,6 +18,7 @@ import {
   VariableConfig,
   MultiValueVariableConfigType,
   requiresValues,
+  INTERNAL_VARIABLES,
   STAGE_MANAGER,
   checkApiKeyExists,
   SurveyQuestion,
@@ -215,6 +216,16 @@ export class ExperimentEditor extends Service {
     }
 
     for (const config of this.experiment.variableConfigs ?? []) {
+      // Names starting with "_" are reserved for internal variables; only
+      // the ones in the registry may be used, and never defined here.
+      if (
+        config.definition.name.startsWith('_') &&
+        !INTERNAL_VARIABLES.has(config.definition.name)
+      ) {
+        errors.push(
+          'Variables that begin with an underscore are not allowed unless they are established internal variables.',
+        );
+      }
       if (requiresValues(config.type)) {
         const multiConfig = config as MultiValueVariableConfigType;
         if (multiConfig.values.length === 0) {

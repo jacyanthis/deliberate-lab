@@ -12,6 +12,7 @@ import {
   PromptItemGroup,
   PromptItemType,
   StageConfig,
+  TextPromptItem,
   StageContextData,
   StageContextPromptItem,
   StageKind,
@@ -31,6 +32,9 @@ import {
   DEFAULT_MEDIATOR_GROUP_CHAT_PROMPT_INSTRUCTIONS,
   DEFAULT_MEDIATOR_GROUP_CHAT_TURN_TAKING_PROMPT_INSTRUCTIONS,
   ChatStageConfig,
+  PrivateChatStageConfig,
+  SYSTEM_VARIABLE_NAMESPACE,
+  injectScratchpadField,
   rewriteDescriptionsForRequiredResponse,
 } from '@deliberation-lab/utils';
 import {
@@ -47,6 +51,40 @@ import {
   getFirestorePrivateChatMessages,
 } from './utils/firestore';
 import {stageManager} from './app';
+
+// Recursively check whether `{{_scratchpad}}` appears in prompt
+export function containsScratchpadPlaceholder(items: PromptItem[]): boolean {
+  return items.some((item) => {
+    if (item.type === PromptItemType.TEXT) {
+      return (
+        (item as TextPromptItem).text?.includes('{{_scratchpad}}') ?? false
+      );
+    }
+    if (item.type === PromptItemType.GROUP) {
+      const group = item as PromptItemGroup;
+      return (
+        (group.title?.includes('{{_scratchpad}}') ?? false) ||
+        containsScratchpadPlaceholder(group.items ?? [])
+      );
+    }
+    return false;
+  });
+}
+
+/** With no history, the placeholder and one adjacent blank line collapse. */
+function substituteScratchpad(text: string, block: string): string {
+  if (!block) {
+    return text
+      .replaceAll('{{_scratchpad}}\n\n', '')
+      .replaceAll('\n\n{{_scratchpad}}', '\n')
+      .replaceAll('{{_scratchpad}}', '');
+  }
+  const b = block.trim();
+  return text
+    .replaceAll('{{_scratchpad}}\n\n', `${b}\n\n`)
+    .replaceAll('\n\n{{_scratchpad}}', `\n\n${b}\n`)
+    .replaceAll('{{_scratchpad}}', b);
+}
 
 /** Attempts to fetch corresponding prompt config from storage,
  * else returns the stage's default config.
@@ -218,6 +256,16 @@ export async function getFirestoreDataForStructuredPrompt(
       data,
     );
   }
+
+  // Fetch the current stage config when no prompt item has loaded it, so
+  // consumers can always read the stage's kind.
+  if (!data[currentStageId]) {
+    const stage = await getFirestoreStage(experimentId, currentStageId);
+    if (stage) {
+      data[currentStageId] = initializeStageContextData(stage);
+    }
+  }
+
   return {experiment, cohort, participants: answerParticipants, data};
 }
 
@@ -434,6 +482,55 @@ export async function getPromptFromConfig(
     };
   }
 
+  // When the stage prevents agents from ending the chat, no agent is asked
+  // for the end-chat field at all. In turn-based private chats the agent is
+  // also not asked whether to respond: it always replies (declining would
+  // stall the turn; in free-form private chats it just means no reply).
+  const stagePreventsAgentEnd =
+    (stage?.kind === StageKind.CHAT ||
+      stage?.kind === StageKind.PRIVATE_CHAT) &&
+    (stage as ChatStageConfig | PrivateChatStageConfig).preventAgentEnd ===
+      true;
+  if (stagePreventsAgentEnd && structuredOutputConfig?.schema?.properties) {
+    const dropFields = [structuredOutputConfig.readyToEndField];
+    let respondRequired = false;
+    if (
+      stage?.kind === StageKind.PRIVATE_CHAT &&
+      (stage as PrivateChatStageConfig).isTurnBasedChatGroupStyle === true
+    ) {
+      dropFields.push(structuredOutputConfig.shouldRespondField);
+      respondRequired = true;
+    }
+    const remainingProperties = structuredOutputConfig.schema.properties.filter(
+      (prop) => !dropFields.includes(prop.name),
+    );
+    structuredOutputConfig = {
+      ...structuredOutputConfig,
+      schema: {
+        ...structuredOutputConfig.schema,
+        properties: respondRequired
+          ? rewriteDescriptionsForRequiredResponse(
+              remainingProperties,
+              userProfile.type === UserType.MEDIATOR,
+            )
+          : remainingProperties,
+      },
+    };
+  }
+
+  // Auto-inject _scratchpad at the start of the schema when {{_scratchpad}} is present
+  const usesReasoningPlaceholder =
+    (userProfile.agentConfig?.promptContext?.includes('{{_scratchpad}}') ??
+      false) ||
+    containsScratchpadPlaceholder(promptConfig.prompt) ||
+    ((stage as ChatStageConfig).additionalParticipantInstructions?.includes(
+      '{{_scratchpad}}',
+    ) ??
+      false);
+  if (usesReasoningPlaceholder) {
+    structuredOutputConfig = injectScratchpadField(structuredOutputConfig);
+  }
+
   const structuredOutput = makeStructuredOutputPrompt(structuredOutputConfig);
 
   return structuredOutput ? `${promptText}\n${structuredOutput}` : promptText;
@@ -518,7 +615,9 @@ async function fetchConditionDependencies(
   data: Record<string, StageContextData>,
 ): Promise<void> {
   const dependencies = extractConditionDependencies(condition);
-  const requiredStageIds = [...new Set(dependencies.map((dep) => dep.stageId))];
+  const requiredStageIds = [
+    ...new Set(dependencies.map((dep) => dep.stageId)),
+  ].filter((id) => id !== SYSTEM_VARIABLE_NAMESPACE);
 
   // Find stages not already in data
   const missingStageIds = requiredStageIds.filter((stageId) => !data[stageId]);
@@ -568,7 +667,7 @@ function buildStageAnswersForParticipant(
  * Returns true if the condition is met (or if there's no condition).
  * Only works for private chat contexts with a single participant.
  */
-function shouldIncludePromptItem(
+export function shouldIncludePromptItem(
   promptItem: PromptItem,
   stageKind: StageKind,
   participants: ParticipantProfileExtended[],
@@ -585,7 +684,12 @@ function shouldIncludePromptItem(
     stageContextData,
     participants[0].publicId,
   );
-  return evaluateConditionWithStageAnswers(promptItem.condition, stageAnswers);
+  return evaluateConditionWithStageAnswers(
+    promptItem.condition,
+    stageAnswers,
+    undefined,
+    participants[0].variableMap,
+  );
 }
 
 /**
@@ -638,17 +742,40 @@ async function processPromptItems(
   // Determine which participant's variables to use for template resolution.
   // For agent participants, use their own variables.
   // For mediators in private chat, use that participant's variables.
-  let participantForVariables: ParticipantProfileExtended | undefined;
+  // For mediators in group chat, use every participant's variables.
+  let participantForVariables:
+    | ParticipantProfileExtended
+    | ParticipantProfileExtended[]
+    | undefined;
+  const stageConfigKind = promptData.data[stageId]?.stage?.kind;
+
   if (userProfile.type === UserType.PARTICIPANT) {
     participantForVariables = userProfile as ParticipantProfileExtended;
   } else if (
     userProfile.type === UserType.MEDIATOR &&
-    stageKind === StageKind.PRIVATE_CHAT
+    stageConfigKind === StageKind.PRIVATE_CHAT
   ) {
+    // The single participant in a private chat has their variables exposed
+    // directly, so they are just accessed by the assignment order within the
+    // participant, like {{<variable>.<position>}} or, for variables expanded
+    // to separate names, {{<variable>_1}}.
     participantForVariables =
       promptData.participants.length === 1
         ? promptData.participants[0]
         : undefined;
+  } else if (
+    userProfile.type === UserType.MEDIATOR &&
+    stageConfigKind === StageKind.CHAT
+  ) {
+    // In a group chat, expose every participant's variables to the mediator
+    // as arrays by position, so a prompt indexes a participant and then a
+    // position within that participant's variable:
+    // {{<variable>.<participant>.<position>}}. Participants are ordered
+    // humans first and otherwise keep the order they were fetched in.
+    participantForVariables = [
+      ...promptData.participants.filter((p) => !p.agentConfig),
+      ...promptData.participants.filter((p) => p.agentConfig),
+    ];
   }
 
   // Get variable context for resolving templates
@@ -664,6 +791,67 @@ async function processPromptItems(
       it.type === PromptItemType.GROUP &&
       (it as PromptItemGroup).shuffleConfig?.shuffle,
   );
+
+  // When referenced, inject the agent's past reasoning history
+  let reasoningText = '';
+  const usesReasoning =
+    (userProfile.agentConfig?.promptContext?.includes('{{_scratchpad}}') ??
+      false) ||
+    containsScratchpadPlaceholder(promptItems) ||
+    ((
+      promptData.data[stageId]?.stage as ChatStageConfig | undefined
+    )?.additionalParticipantInstructions?.includes('{{_scratchpad}}') ??
+      false);
+  const chatContext = usesReasoning ? promptData.data[stageId] : undefined;
+  const messages = chatContext
+    ? stageKind === StageKind.PRIVATE_CHAT
+      ? (chatContext.privateChatMap[promptData.participants[0]?.publicId] ?? [])
+      : chatContext.publicChatMessages
+    : [];
+
+  if (messages && messages.length > 0) {
+    const maxReasoningChars = 20000; // Approx 5,000 tokens (4 chars per token)
+
+    // Filter messages sent by this agent that have reasoning
+    // Not msg.reasoning (the model's internal API reasoning, which is only available with some models)
+    const agentReasonings: {round: number; reasoning: string}[] = [];
+    messages.forEach((msg, idx) => {
+      if (
+        msg.senderId === userProfile.publicId &&
+        msg._scratchpad &&
+        msg._scratchpad.trim() !== ''
+      ) {
+        agentReasonings.push({round: idx + 1, reasoning: msg._scratchpad});
+      }
+    });
+
+    if (agentReasonings.length > 0) {
+      const recentLines: string[] = [];
+      let charCount = 0;
+
+      // Begin with most recent context
+      for (let i = agentReasonings.length - 1; i >= 0; i--) {
+        const {reasoning} = agentReasonings[i];
+        const roundLine = `#${i + 1}\n${reasoning}\n\n`;
+        if (charCount + roundLine.length <= maxReasoningChars) {
+          recentLines.unshift(roundLine);
+          charCount += roundLine.length;
+        } else {
+          break;
+        }
+      }
+      if (recentLines.length > 0) {
+        reasoningText =
+          'Each line shows your scratchpad for your messages sent in this conversation, in order:\n\n' +
+          recentLines.join('');
+        reasoningText = reasoningText.trim();
+      }
+    }
+  }
+
+  const scratchpadBlock = reasoningText;
+  valueMap['_scratchpad'] = '';
+
   for (const [itemIndex, promptItem] of promptItems.entries()) {
     // Check condition if present (only for private chat contexts)
     if (
@@ -681,7 +869,7 @@ async function processPromptItems(
       case PromptItemType.TEXT: {
         // Resolve template variables in text prompt items
         const resolvedText = resolveTemplateVariables(
-          promptItem.text,
+          substituteScratchpad(promptItem.text, scratchpadBlock),
           variableDefinitions,
           valueMap,
         );
@@ -712,7 +900,11 @@ async function processPromptItems(
         );
         const extraParticipantInstr = (stage as ChatStageConfig)
           ?.additionalParticipantInstructions;
-        if (extraParticipantInstr) items.push(extraParticipantInstr);
+        if (extraParticipantInstr) {
+          items.push(
+            substituteScratchpad(extraParticipantInstr, scratchpadBlock),
+          );
+        }
         break;
       }
       case PromptItemType.PROFILE_CONTEXT: {
@@ -721,7 +913,7 @@ async function processPromptItems(
           includeScaffolding,
         );
         if (profileContext) {
-          items.push(profileContext);
+          items.push(substituteScratchpad(profileContext, scratchpadBlock));
         }
         break;
       }
@@ -936,6 +1128,7 @@ function getStageContextForPrompt(
           [p],
           stageContext,
           includeScaffolding,
+          omitChatHistory,
         ),
       ),
       ...personaAgents.map((p) => p.agentConfig?.promptContext ?? ''),

@@ -116,7 +116,7 @@ export class ChatMessageComponent extends MobxLitElement {
   };
 
   override render() {
-    if (!this.chat) {
+    if (!this.chat || this.chat.isScratchpadOnly) {
       return nothing;
     }
 
