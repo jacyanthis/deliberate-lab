@@ -33,19 +33,6 @@ import {
 } from '../../shared/utils';
 import {styles} from './chat_info_panel.scss';
 
-// 7-point Likert scale (top-to-bottom), most to least positive (so "like" is
-// at the top). The stored value (1-7) is unchanged; only the display order is
-// reversed.
-const QUIZ_LIKERT_OPTIONS: {value: number; label: string}[] = [
-  {value: 7, label: 'Strongly like'},
-  {value: 6, label: 'Like'},
-  {value: 5, label: 'Somewhat like'},
-  {value: 4, label: 'Neutral'},
-  {value: 3, label: 'Somewhat dislike'},
-  {value: 2, label: 'Dislike'},
-  {value: 1, label: 'Strongly dislike'},
-];
-
 /** Chat panel view with stage info, timer, participants. */
 @customElement('chat-info-panel')
 export class ChatPanel extends MobxLitElement {
@@ -69,63 +56,35 @@ export class ChatPanel extends MobxLitElement {
     );
   }
 
-  // Quiz state.
-  // Selected 7-point Likert value (1-7), or null if unselected.
-  @state() private quizRating: number | null = null;
-  // Highest quiz checkpoint the participant has already answered. The backend
-  // publishes the authoritative pause checkpoint (quizPauseCheckpoint); the
-  // popup shows whenever it leads this local answered count.
-  @state() private quizAnsweredCheckpoint = 0;
-
-  // Backend-authoritative pause checkpoint for this stage (0 = not paused).
-  private get quizPauseCheckpoint(): number {
-    if (!this.stage) return 0;
-    const publicData = this.cohortService.stagePublicDataMap[this.stage.id] as
-      | ChatStagePublicData
-      | undefined;
-    return publicData?.quizPauseCheckpoint ?? 0;
-  }
-
-  // The quiz shows whenever the backend has paused the chat at a checkpoint
-  // the participant has not yet answered. The backend pause is authoritative,
-  // so the popup can never outrun the participant (the "2nd submit does
-  // nothing" bug): each pause raises quizPauseCheckpoint by exactly one.
-  private get showQuiz(): boolean {
-    return (
-      this.participantService.profile?.isQuizzed === true &&
-      this.quizPauseCheckpoint > this.quizAnsweredCheckpoint
-    );
-  }
-
   override render() {
     if (!this.stage) {
       return nothing;
     }
 
     if (this.topLayout) {
-      // The narrow layout has no side panel, so the quiz renders here, above
-      // the roster. Otherwise a paused chat would have no answerable quiz.
       return html`
-        <div class="top-layout">
-          ${this.showQuiz ? this.renderQuiz() : nothing}
-          ${this.renderParticipantList(true)}
-        </div>
+        <div class="top-layout">${this.renderParticipantList(true)}</div>
       `;
     }
 
-    const showQuiz = this.showQuiz;
-    // When an observer is present in the cohort, participant labels gain a
-    // "(yours)" suffix and representative agent names get long, so widen the
-    // panel to accommodate them.
-    const observerPresent = this.cohortService.activeParticipants.some(
-      (p) => p.isObserver,
-    );
+    const showTextNotes = this.participantService.profile?.isObserver === true;
 
     return html`
-      <div class="side-layout">
-        <stage-description .stage=${this.stage} noPadding> </stage-description>
-        ${showQuiz ? this.renderQuiz() : nothing} ${this.renderTimer()}
-        ${this.renderParticipantList()}
+      <div class="side-layout ${showTextNotes ? 'with-text-notes' : ''}">
+        ${showTextNotes
+          ? html`
+              <div class="scrollable-content">
+                <stage-description .stage=${this.stage} noPadding>
+                </stage-description>
+                ${this.renderTimer()} ${this.renderParticipantList()}
+              </div>
+              ${this.renderTextNotes()}
+            `
+          : html`
+              <stage-description .stage=${this.stage} noPadding>
+              </stage-description>
+              ${this.renderTimer()} ${this.renderParticipantList()}
+            `}
       </div>
     `;
   }
@@ -278,115 +237,48 @@ export class ChatPanel extends MobxLitElement {
     `;
   }
 
-  private setQuizRating(rating: number) {
-    this.quizRating = rating;
-  }
-
-  private async submitQuiz() {
-    if (this.quizRating === null) return;
-    const rating = this.quizRating;
-    const checkpoint = this.quizPauseCheckpoint;
-    const text = this.participantService.quizText.trim();
-    // Pass the backend's current pause checkpoint so the endpoint clears it and
-    // resumes the stalled turn; the Likert value is saved as a structured field.
-    await this.participantService.submitParticipantThought(
-      text,
-      checkpoint,
-      rating,
-    );
-    // Advance exactly one checkpoint so no quiz is ever skipped; the form resets
-    // (submitParticipantThought clears quizText).
-    this.quizAnsweredCheckpoint = this.quizAnsweredCheckpoint + 1;
-    this.quizRating = null;
-  }
-
-  // Submit the quiz on Enter (Shift+Enter still inserts a newline) once the
-  // Likert rating and a non-empty answer are both present, matching the submit
-  // button's enabled state. keydown is composed, so it reaches this host
-  // listener from the inner <textarea>; quizText is already current
-  // because pr-textarea fires change on every input.
-  private onQuizKeydown(e: KeyboardEvent) {
-    if (e.key !== 'Enter' || e.shiftKey) return;
-    const text = this.participantService.quizText.trim();
-    const canSubmit =
-      this.quizRating !== null &&
-      text !== '' &&
-      !this.participantService.isSubmittingThought;
-    if (!canSubmit) return;
-    e.preventDefault();
-    this.submitQuiz();
-  }
-
-  // Tracks the pause checkpoint the form was last reset for, so a new pause
-  // clears any stale rating/text from the previous quiz.
-  private lastResetPauseCheckpoint = 0;
-
-  override willUpdate() {
-    const pause = this.quizPauseCheckpoint;
-    if (pause > this.lastResetPauseCheckpoint) {
-      this.lastResetPauseCheckpoint = pause;
-      this.quizRating = null;
-      this.participantService.setQuizText('');
-    }
-  }
-
-  private renderQuiz() {
-    const text = this.participantService.quizText;
+  private renderTextNotes() {
+    const value = this.participantService.textNotes;
     const isSubmitting = this.participantService.isSubmittingThought;
-    const canSubmit =
-      this.quizRating !== null && text.trim() !== '' && !isSubmitting;
-    const quizQuestion = 'Do you like the process so far?';
+    const isSubmitDisabled = isSubmitting || !value || value.trim() === '';
+
+    const submitThoughts = async () => {
+      await this.participantService.submitParticipantThought(value);
+    };
+
     return html`
-      <div class="quiz-section">
-        <div class="quiz-question">${quizQuestion}</div>
-        <div class="quiz-likert">
-          ${QUIZ_LIKERT_OPTIONS.map(
-            (option) => html`
-              <button
-                type="button"
-                class="likert-option ${this.quizRating === option.value
-                  ? 'selected'
-                  : ''}"
-                aria-label=${option.label}
-                @click=${() => this.setQuizRating(option.value)}
-              >
-                <span class="likert-label">${option.label}</span>
-              </button>
-            `,
-          )}
-        </div>
-        <div class="quiz-question">
-          In one sentence, describe what you like or dislike.
+      <div class="text-notes-container">
+        <div class="text-notes-title">Share your thoughts</div>
+        <div class="text-notes-subtitle">
+          What do you think about what you are observing? Please write down your
+          thoughts and click "Submit". You can submit multiple times. Do not
+          worry about spelling or grammar.
         </div>
         <pr-textarea
           size="small"
           variant="outlined"
-          .rows=${6}
-          placeholder="Type your answer here..."
-          .value=${text}
+          placeholder="Type your thoughts here..."
+          .value=${value}
           ?disabled=${isSubmitting}
-          ?focused=${true}
-          @change=${this.onQuizTextChange}
-          @keydown=${this.onQuizKeydown}
-          class="quiz-textarea"
+          @change=${this.onTextNotesChange}
         >
         </pr-textarea>
         <pr-button
           size="small"
           variant="tonal"
-          ?disabled=${!canSubmit}
+          ?disabled=${isSubmitDisabled}
           ?loading=${isSubmitting}
-          @click=${() => this.submitQuiz()}
-          class="quiz-submit-btn"
+          @click=${submitThoughts}
+          class="text-notes-submit-btn"
         >
-          Submit
+          Submit thoughts
         </pr-button>
       </div>
     `;
   }
 
-  private onQuizTextChange(e: CustomEvent) {
-    this.participantService.setQuizText(e.detail.value);
+  private onTextNotesChange(e: CustomEvent) {
+    this.participantService.setTextNotes(e.detail.value);
   }
 }
 

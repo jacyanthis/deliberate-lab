@@ -23,72 +23,11 @@
   width: 240px;
   height: 100%;
   box-sizing: border-box;
-  position: relative; // anchor for the quiz overlay
-}
 
-// Quiz section: rendered below the stage description
-// in the left panel while the backend has paused the chat for the quiz.
-.quiz-section {
-  @include common.flex-column;
-  gap: common.$spacing-medium;
-  padding-top: common.$spacing-large;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-}
-
-// Prominent paused heading.
-.quiz-paused {
-  @include typescale.title-medium;
-  font-weight: 700;
-  color: var(--md-sys-color-primary);
-}
-
-.quiz-question {
-  @include typescale.body-small;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface);
-}
-
-// 7-point Likert laid out top-to-bottom.
-.quiz-likert {
-  @include common.flex-column;
-  gap: common.$spacing-small;
-}
-
-.likert-option {
-  @include common.flex-row-align-center;
-  gap: common.$spacing-medium;
-  cursor: pointer;
-  text-align: left;
-  padding: common.$spacing-small common.$spacing-medium;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: common.$spacing-medium;
-  background: var(--md-sys-color-surface-container);
-  color: inherit;
-
-  &.selected {
-    border-color: var(--md-sys-color-primary);
-    background: var(--md-sys-color-primary-container);
+  &.with-text-notes {
+    overflow-y: hidden; // Prevent overall scroll, let inner container scroll
+    gap: 0;
   }
-}
-
-.likert-value {
-  @include typescale.label-medium;
-  flex-shrink: 0;
-  font-weight: 700;
-  min-width: 16px;
-}
-
-.likert-label {
-  @include typescale.label-medium;
-}
-
-// Larger multi-line answer box (enough for a short paragraph).
-.quiz-textarea::part(textarea) {
-  min-height: 120px;
-}
-
-.quiz-submit-btn {
-  align-self: flex-end;
 }
 
 .panel-item {
@@ -179,4 +118,56 @@
   overflow-y: auto;
   max-height: 70%;
   flex-shrink: 0;
+}
+
+.text-notes-container {
+  @include common.flex-column;
+  gap: common.$spacing-small;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  padding-top: common.$spacing-medium;
+  margin-top: common.$spacing-small;
+  flex-grow: 1;
+  flex-shrink: 0;
+  height: 0;
+}
+
+.text-notes-container pr-textarea {
+  flex-grow: 1;
+  min-height: 120px;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-notes-container pr-textarea::part(wrapper) {
+  flex-grow: 1;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-notes-container pr-textarea::part(textarea) {
+  flex-grow: 1;
+  height: 100% !important;
+  box-sizing: border-box;
+  overflow-y: auto !important;
+}
+
+.text-notes-title {
+  @include typescale.title-small;
+  color: var(--md-sys-color-on-surface);
+  font-weight: 600;
+}
+
+.text-notes-subtitle {
+  @include typescale.body-small;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--md-sys-color-outline);
+  margin-bottom: common.$spacing-small;
+}
+
+.text-notes-submit-btn {
+  margin-top: common.$spacing-small;
+  align-self: flex-end;
 }

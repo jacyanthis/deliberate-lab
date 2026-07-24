@@ -62,10 +62,7 @@ describe('submitParticipantThought endpoint', () => {
         return {exists: true, data: () => ({})};
       }
       if (id === 'part-456') {
-        return {
-          exists: true,
-          data: () => ({isObserver: true, isQuizzed: true}),
-        };
+        return {exists: true, data: () => ({isObserver: true})};
       }
       if (id === 'stage-789') {
         return {exists: true, data: () => ({})};
@@ -113,10 +110,7 @@ describe('submitParticipantThought endpoint', () => {
       if (id === 'exp-123') {
         return {exists: false}; // Experiment not found
       }
-      return {
-        exists: true,
-        data: () => ({isObserver: true, isQuizzed: true}),
-      };
+      return {exists: true, data: () => ({isObserver: true})};
     });
 
     const data = {
@@ -160,10 +154,7 @@ describe('submitParticipantThought endpoint', () => {
         return {exists: true, data: () => ({})};
       }
       if (id === 'part-456') {
-        return {
-          exists: true,
-          data: () => ({isObserver: true, isQuizzed: true}),
-        };
+        return {exists: true, data: () => ({isObserver: true})};
       }
       if (id === 'stage-789') {
         return {exists: false}; // Stage not found
@@ -183,13 +174,13 @@ describe('submitParticipantThought endpoint', () => {
     );
   });
 
-  it("fails if the participant's treatment does not include the quiz", async () => {
+  it('fails if the participant is not an observer', async () => {
     mockGet.mockImplementation((id) => {
       if (id === 'exp-123') {
         return {exists: true, data: () => ({})};
       }
       if (id === 'part-456') {
-        return {exists: true, data: () => ({isObserver: false})}; // Treatment without the quiz
+        return {exists: true, data: () => ({isObserver: false})}; // Not an observer
       }
       if (id === 'stage-789') {
         return {exists: true, data: () => ({})};
@@ -207,7 +198,7 @@ describe('submitParticipantThought endpoint', () => {
     await expect(wrapped({data})).rejects.toThrow(
       new HttpsError(
         'permission-denied',
-        "Participant's treatment does not include the quiz",
+        'Participant must be an observer to submit thoughts',
       ),
     );
   });

@@ -108,7 +108,7 @@ export class ParticipantService extends Service {
     {};
   @observable privateChatMap: Record<string, ChatMessage[]> = {};
   @observable alertMap: Record<string, AlertMessage> = {};
-  @observable quizText = '';
+  @observable textNotes = '';
 
   // Loading
   @observable unsubscribe: Unsubscribe[] = [];
@@ -235,8 +235,8 @@ export class ParticipantService extends Service {
     this.currentStageViewId = stageId;
   }
 
-  @action setQuizText(text: string) {
-    this.quizText = text;
+  @action setTextNotes(text: string) {
+    this.textNotes = text;
   }
 
   updateForRoute(
@@ -444,7 +444,7 @@ export class ParticipantService extends Service {
     this.answerMap = {};
     this.privateChatMap = {};
     this.alertMap = {};
-    this.quizText = '';
+    this.textNotes = '';
     this.sp.participantAnswerService.reset();
   }
 
@@ -796,12 +796,8 @@ export class ParticipantService extends Service {
     return response;
   }
 
-  /** Submit the participant's private thoughts on the discussion. */
-  async submitParticipantThought(
-    text: string,
-    checkpoint?: number,
-    rating?: number,
-  ) {
+  /** Submit participant's private thoughts on the observation. */
+  async submitParticipantThought(text: string) {
     if (!this.experimentId || !this.profile || !text || text.trim() === '') {
       return {success: false};
     }
@@ -821,14 +817,12 @@ export class ParticipantService extends Service {
           participantId: this.profile.privateId,
           stageId: this.profile.currentStageId,
           text: text.trim(),
-          ...(checkpoint != null ? {checkpoint} : {}),
-          ...(rating != null ? {rating} : {}),
         },
       );
 
       if (response.success) {
         runInAction(() => {
-          this.quizText = '';
+          this.textNotes = '';
         });
       }
     } catch (error) {

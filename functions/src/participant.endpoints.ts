@@ -22,17 +22,12 @@ import {
   SubmitParticipantThoughtData,
 } from '@deliberation-lab/utils';
 import {
-  getFirestoreActiveMediators,
-  getFirestoreActiveParticipants,
   getFirestoreCohort,
   getFirestoreStage,
   getFirestoreStagePublicData,
-  getFirestoreStagePublicDataRef,
   getFirestorePrivateChatMessages,
-  getFirestorePublicStageChatMessages,
 } from './utils/firestore';
 import {sendInitialChatMessages} from './chat/chat.agent';
-import {triggerNextTurnHolder} from './triggers/chat.triggers';
 import {
   updateCohortStageUnlocked,
   updateParticipantNextStage,
@@ -866,8 +861,7 @@ export const updateParticipantStatus = onCall(async (request) => {
 // ************************************************************************* //
 // submitParticipantThought endpoint                                         //
 //                                                                           //
-// Input structure: { experimentId, participantId, stageId, text,            //
-//   checkpoint, rating }                                                    //
+// Input structure: { experimentId, participantId, stageId, text }           //
 // Validation: utils/src/participant.validation.ts                           //
 // ************************************************************************* //
 export const submitParticipantThought = onCall(async (request) => {
@@ -878,7 +872,7 @@ export const submitParticipantThought = onCall(async (request) => {
     throw new HttpsError('invalid-argument', 'Invalid data');
   }
 
-  const {experimentId, participantId, stageId, text, checkpoint, rating} = data;
+  const {experimentId, participantId, stageId, text} = data;
 
   const trimmedText = text.trim();
   if (trimmedText.length === 0) {
@@ -913,10 +907,10 @@ export const submitParticipantThought = onCall(async (request) => {
   }
 
   const participant = participantDoc.data() as ParticipantProfileExtended;
-  if (!participant.isQuizzed) {
+  if (!participant.isObserver) {
     throw new HttpsError(
       'permission-denied',
-      "Participant's treatment does not include the quiz",
+      'Participant must be an observer to submit thoughts',
     );
   }
 
@@ -941,68 +935,8 @@ export const submitParticipantThought = onCall(async (request) => {
   await thoughtRef.set({
     id: thoughtId,
     text: trimmedText,
-    ...(rating != null ? {rating} : {}),
     timestamp,
   });
-
-  // Quiz pause: submitting the quiz records the
-  // answered checkpoint, clears the chat's pause, and resumes the stalled turn.
-  // No new chat message arrives to re-fire onPublicChatMessageCreated, so the
-  // resume must be explicit here. quizAnsweredCheckpoint is recorded so the
-  // trigger does not immediately re-pause for the checkpoint just answered.
-  if (checkpoint != null && participant.isQuizzed) {
-    const cohortId = participant.currentCohortId;
-    await getFirestoreStagePublicDataRef(
-      experimentId,
-      cohortId,
-      stageId,
-    ).update({quizPauseCheckpoint: 0, quizAnsweredCheckpoint: checkpoint});
-
-    // Resume the turn that was paused: re-dispatch the current turn holder.
-    const publicStageData = (await getFirestoreStagePublicData(
-      experimentId,
-      cohortId,
-      stageId,
-    )) as ChatStagePublicData | undefined;
-    const currentTurnId = publicStageData?.currentTurnParticipantId;
-    if (currentTurnId) {
-      const [mediators, participants, chatMessages] = await Promise.all([
-        getFirestoreActiveMediators(experimentId, cohortId, stageId, true),
-        getFirestoreActiveParticipants(
-          experimentId,
-          cohortId,
-          stageId,
-          false,
-          true, // include observers (for non-observer participant ID context)
-        ),
-        getFirestorePublicStageChatMessages(experimentId, cohortId, stageId),
-      ]);
-      const nextMediatorHolder = mediators.find(
-        (m) => m.publicId === currentTurnId,
-      );
-      const nextTurnHolder = participants.find(
-        (p) => p.publicId === currentTurnId,
-      );
-      const allParticipantIds = participants
-        .filter((p) => !p.isObserver)
-        .map((p) => p.privateId);
-      // Use the latest message ID as the trigger so the resumed agent responds
-      // to the conversation as it stands, and so the empty-triggerChatId
-      // "initial message" lock (already taken when the chat began) does not
-      // silently swallow the resume.
-      const latestMessageId =
-        chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].id : '';
-      await triggerNextTurnHolder(
-        experimentId,
-        cohortId,
-        allParticipantIds,
-        stageId,
-        latestMessageId,
-        nextMediatorHolder,
-        nextTurnHolder,
-      );
-    }
-  }
 
   return {success: true};
 });
