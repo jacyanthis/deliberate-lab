@@ -49,6 +49,7 @@ import {
   StageKind,
   STAGE_MANAGER,
   extractVariablesFromVariableConfigs,
+  getProfileInternalVariables,
   resolveTemplateVariables,
 } from '@deliberation-lab/utils';
 import {isParticipantEndedExperiment} from '../../shared/participant.utils';
@@ -256,6 +257,7 @@ export class ParticipantView extends MobxLitElement {
         ...experimentVariableMap,
         ...cohortVariableMap,
         ...participantVariableMap,
+        ...getProfileInternalVariables(this.participantService.profile),
       },
     );
 
