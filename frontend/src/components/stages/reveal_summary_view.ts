@@ -19,6 +19,7 @@ import {
   StageKind,
   STAGE_MANAGER,
   extractVariablesFromVariableConfigs,
+  getProfileInternalVariables,
   resolveTemplateVariables,
 } from '@deliberation-lab/utils';
 
@@ -69,6 +70,7 @@ export class RevealView extends MobxLitElement {
         ...experimentVariableMap,
         ...cohortVariableMap,
         ...participantVariableMap,
+        ...getProfileInternalVariables(this.participantService.profile),
       },
     );
 
