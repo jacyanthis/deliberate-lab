@@ -17,8 +17,43 @@ Mustache.escape = (text: string) => text;
  * experimenter can reference but cannot define. The `_` prefix is reserved for
  * these; this set is the registry the template logic consults.
  */
-export const INTERNAL_VARIABLES: ReadonlySet<string> = new Set(['_scratchpad']);
-export type InternalVariableName = '_scratchpad';
+export const INTERNAL_VARIABLES: ReadonlySet<string> = new Set([
+  '_scratchpad',
+  '_profileName',
+  '_profileAvatar',
+  '_profilePronouns',
+  '_profileId',
+]);
+export type InternalVariableName =
+  | '_scratchpad'
+  | '_profileName'
+  | '_profileAvatar'
+  | '_profilePronouns'
+  | '_profileId';
+
+/**
+ * Value-map entries for the internal profile variables, so participant-facing
+ * templates can reference the participant's own profile (for example, building
+ * "{{_profileName}}'s Agent" from the participant's name). Missing fields
+ * resolve to an empty string.
+ */
+export function getProfileInternalVariables(
+  profile:
+    | {
+        name?: string | null;
+        avatar?: string | null;
+        pronouns?: string | null;
+        publicId?: string;
+      }
+    | undefined,
+): Record<string, string> {
+  return {
+    _profileName: profile?.name ?? '',
+    _profileAvatar: profile?.avatar ?? '',
+    _profilePronouns: profile?.pronouns ?? '',
+    _profileId: profile?.publicId ?? '',
+  };
+}
 
 /** Reason why a variable reference is invalid */
 export type InvalidVariableReason =
