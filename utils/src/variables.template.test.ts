@@ -1,6 +1,7 @@
 import {VariableDefinition, VariableType} from './variables';
 import {
   findUnusedVariables,
+  getProfileInternalVariables,
   resolveTemplateVariables,
   validateTemplateVariables,
   formatInvalidVariable,
@@ -462,5 +463,48 @@ describe('internal variables (reserved _ prefix)', () => {
       },
     );
     expect(out).toBe('Notes: my note');
+  });
+
+  it('maps participant profile fields to internal profile variables', () => {
+    expect(
+      getProfileInternalVariables({
+        name: 'Bear',
+        avatar: '🐻',
+        pronouns: 'they/them',
+        publicId: 'abc123',
+      }),
+    ).toEqual({
+      _profileName: 'Bear',
+      _profileAvatar: '🐻',
+      _profilePronouns: 'they/them',
+      _profileId: 'abc123',
+    });
+  });
+
+  it('falls back to empty strings when profile fields are missing', () => {
+    expect(getProfileInternalVariables(undefined)).toEqual({
+      _profileName: '',
+      _profileAvatar: '',
+      _profilePronouns: '',
+      _profileId: '',
+    });
+  });
+
+  it('resolves internal profile variables in participant-facing text', () => {
+    const out = resolveTemplateVariables(
+      "{{_profileName}}'s Agent has a sense for what is right and wrong.",
+      {},
+      getProfileInternalVariables({name: 'Bear'}),
+    );
+    expect(out).toBe("Bear's Agent has a sense for what is right and wrong.");
+  });
+
+  it('treats internal profile variables as valid references', () => {
+    const result = validateTemplateVariables(
+      '{{_profileName}} ({{_profileId}}, {{_profilePronouns}}, {{_profileAvatar}})',
+      {},
+    );
+    expect(result.valid).toBe(true);
+    expect(result.invalidVariables).toEqual([]);
   });
 });
