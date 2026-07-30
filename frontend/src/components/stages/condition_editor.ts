@@ -17,10 +17,10 @@ import {
   ConditionOperator,
   ComparisonOperator,
   ConditionTarget,
-  ConditionTargetReference,
   createConditionGroup,
   createComparisonCondition,
   getComparisonOperatorLabel,
+  getConditionTargetKey,
 } from '@deliberation-lab/utils';
 
 import {styles} from './condition_editor.scss';
@@ -160,14 +160,10 @@ export class ConditionEditor extends MobxLitElement {
     `;
   }
 
-  private getTargetKey(ref: ConditionTargetReference): string {
-    return `${ref.stageId}::${ref.questionId}`;
-  }
-
   private renderComparisonCondition(condition: ComparisonCondition) {
-    const conditionKey = this.getTargetKey(condition.target);
+    const conditionKey = getConditionTargetKey(condition.target);
     const target = this.targets.find(
-      (t) => this.getTargetKey(t.ref) === conditionKey,
+      (t) => getConditionTargetKey(t.ref) === conditionKey,
     );
 
     return html`
@@ -183,7 +179,7 @@ export class ConditionEditor extends MobxLitElement {
         >
           ${this.targets.map(
             (t) => html`
-              <md-select-option value=${this.getTargetKey(t.ref)}>
+              <md-select-option value=${getConditionTargetKey(t.ref)}>
                 <div slot="headline">
                   ${t.stageName ? `[${t.stageName}] ${t.label}` : t.label}
                 </div>
@@ -406,7 +402,7 @@ export class ConditionEditor extends MobxLitElement {
     targetKey: string,
   ) {
     const target = this.targets.find(
-      (t) => this.getTargetKey(t.ref) === targetKey,
+      (t) => getConditionTargetKey(t.ref) === targetKey,
     );
 
     if (target) {

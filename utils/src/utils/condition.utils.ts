@@ -23,9 +23,49 @@ import {
   SurveyAnswer,
   SurveyQuestion,
   SurveyQuestionKind,
+  CheckSurveyAnswer,
   MultipleChoiceSurveyQuestion,
   extractAnswerValue,
 } from '../stages/survey_stage';
+
+/** Returns every condition target value a survey answer provides: the answer
+ *  itself, plus one entry per checked-off item for a checkbox that has items.
+ *  For callers that hold answers and need the whole set of keys up front, such
+ *  as transfer group composition. Callers that already know which target they
+ *  want read it through extractTargetValue instead, and the two agree on the
+ *  key each value is stored under.
+ */
+export function getTargetValuesForAnswer(
+  stageId: string,
+  questionId: string,
+  answer: SurveyAnswer,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {
+    [getConditionTargetKey({stageId, questionId})]: extractAnswerValue(answer),
+  };
+
+  if (answer.kind === SurveyQuestionKind.CHECK) {
+    const checkedMap = (answer as CheckSurveyAnswer).checkedMap ?? {};
+    for (const itemId of Object.keys(checkedMap)) {
+      const key = getConditionTargetKey({stageId, questionId, itemId});
+      values[key] = checkedMap[itemId] === true;
+    }
+  }
+
+  return values;
+}
+
+/** Read the value a target refers to, following itemId into a checkbox map. */
+function extractTargetValue(
+  answer: SurveyAnswer,
+  target: ConditionTargetReference,
+): unknown {
+  if (target.itemId && answer.kind === SurveyQuestionKind.CHECK) {
+    const checkAnswer = answer as CheckSurveyAnswer;
+    return checkAnswer.checkedMap?.[target.itemId] === true;
+  }
+  return extractAnswerValue(answer);
+}
 
 /**
  * Get condition dependency values from a map of stage answers.
@@ -57,7 +97,7 @@ export function getConditionDependencyValues(
       const surveyAnswer = stageAnswer as SurveyStageParticipantAnswer;
       const answer = surveyAnswer.answerMap[targetRef.questionId];
       if (answer) {
-        values[dataKey] = extractAnswerValue(answer);
+        values[dataKey] = extractTargetValue(answer, targetRef);
       }
     } else if (stageAnswer.kind === StageKind.SURVEY_PER_PARTICIPANT) {
       // For SurveyPerParticipant stages, we need targetParticipantId to know which answer to use
@@ -66,8 +106,9 @@ export function getConditionDependencyValues(
           stageAnswer as SurveyPerParticipantStageParticipantAnswer;
         const participantAnswers = surveyAnswer.answerMap[targetRef.questionId];
         if (participantAnswers && participantAnswers[targetParticipantId]) {
-          values[dataKey] = extractAnswerValue(
+          values[dataKey] = extractTargetValue(
             participantAnswers[targetParticipantId],
+            targetRef,
           );
         }
       }
@@ -105,7 +146,7 @@ export function getConditionDependencyValuesWithCurrentStage(
       // Reference to current stage - use local answers
       const answer = currentStageAnswers[targetRef.questionId];
       if (answer) {
-        values[dataKey] = extractAnswerValue(answer);
+        values[dataKey] = extractTargetValue(answer, targetRef);
       }
     } else if (allStageAnswers) {
       // Reference to another stage - use persisted answers
@@ -208,50 +249,82 @@ export function surveyQuestionsToConditionTargets(
   stageId: string,
   stageName?: string,
 ): ConditionTarget[] {
-  // Allocation answers hold one value per item, so they are not offered here
+  // Allocation answers hold a number per item, so they are not offered here
   const targetableQuestions = questions.filter(
     (q) => q.kind !== SurveyQuestionKind.ALLOCATION,
   );
 
-  return targetableQuestions.map((q) => {
-    let type: ConditionTarget['type'] = 'text';
-    let choices: ConditionTarget['choices'] = undefined;
+  const targets: ConditionTarget[] = [];
 
-    switch (q.kind) {
-      case SurveyQuestionKind.TEXT:
-        type = 'text';
-        break;
-      case SurveyQuestionKind.CHECK:
-        type = 'boolean';
-        break;
-      case SurveyQuestionKind.SCALE:
-        type = 'number';
-        break;
-      case SurveyQuestionKind.MULTIPLE_CHOICE:
-        type = 'choice';
-        const mcQuestion = q as MultipleChoiceSurveyQuestion;
-        choices = mcQuestion.options.map((opt) => ({
-          id: opt.id,
-          label: opt.text || `Option ${opt.id}`,
-        }));
-        break;
+  for (const question of targetableQuestions) {
+    // A checkbox question with items offers one boolean target per item
+    if (question.kind === SurveyQuestionKind.CHECK && question.items?.length) {
+      for (const item of question.items) {
+        const questionLabel =
+          question.questionTitle || `Question ${question.id}`;
+        targets.push({
+          ref: {
+            stageId: stageId,
+            questionId: question.id,
+            itemId: item.id,
+          },
+          label: `${questionLabel}: ${item.text || item.id}`,
+          type: 'boolean',
+          choices: undefined,
+          stageName,
+        });
+      }
+      continue;
     }
+    targets.push(buildQuestionTarget(question, stageId, stageName));
+  }
 
-    const ref: ConditionTargetReference = {
-      stageId: stageId,
-      questionId: q.id,
-    };
+  return targets;
+}
 
-    const label = q.questionTitle || `Question ${q.id}`;
+/** Convert a single survey question to a condition target. */
+function buildQuestionTarget(
+  q: SurveyQuestion,
+  stageId: string,
+  stageName?: string,
+): ConditionTarget {
+  let type: ConditionTarget['type'] = 'text';
+  let choices: ConditionTarget['choices'] = undefined;
 
-    return {
-      ref,
-      label,
-      type,
-      choices,
-      stageName,
-    };
-  });
+  switch (q.kind) {
+    case SurveyQuestionKind.TEXT:
+      type = 'text';
+      break;
+    case SurveyQuestionKind.CHECK:
+      type = 'boolean';
+      break;
+    case SurveyQuestionKind.SCALE:
+      type = 'number';
+      break;
+    case SurveyQuestionKind.MULTIPLE_CHOICE:
+      type = 'choice';
+      const mcQuestion = q as MultipleChoiceSurveyQuestion;
+      choices = mcQuestion.options.map((opt) => ({
+        id: opt.id,
+        label: opt.text || `Option ${opt.id}`,
+      }));
+      break;
+  }
+
+  const ref: ConditionTargetReference = {
+    stageId: stageId,
+    questionId: q.id,
+  };
+
+  const label = q.questionTitle || `Question ${q.id}`;
+
+  return {
+    ref,
+    label,
+    type,
+    choices,
+    stageName,
+  };
 }
 
 /**
@@ -324,6 +397,7 @@ export function getConditionTargetsFromStages(
  * A condition is invalid if it references:
  * - A question that doesn't exist in the list
  * - A question that comes at or after the current question's position
+ * - A checkbox item that the referenced question no longer has
  *
  * Invalid conditions are cleared (set to undefined) to prevent rendering issues.
  *
@@ -332,12 +406,14 @@ export function getConditionTargetsFromStages(
  * @returns A new array with invalid conditions cleared
  */
 export function sanitizeSurveyQuestionConditions<
-  T extends {id: string; condition?: Condition},
+  T extends {id: string; condition?: Condition; items?: {id: string}[]},
 >(questions: T[], stageId: string): T[] {
   // Build a map of question ID to its index in the ordering
   const questionIndexMap = new Map<string, number>();
+  const questionItemIds = new Map<string, Set<string>>();
   questions.forEach((q, idx) => {
     questionIndexMap.set(q.id, idx);
+    questionItemIds.set(q.id, new Set((q.items ?? []).map((item) => item.id)));
   });
 
   return questions.map((question, index) => {
@@ -351,7 +427,14 @@ export function sanitizeSurveyQuestionConditions<
 
       const refIndex = questionIndexMap.get(dep.questionId);
       // Invalid if: question doesn't exist, or comes at/after current position
-      return refIndex === undefined || refIndex >= index;
+      if (refIndex === undefined || refIndex >= index) {
+        return true;
+      }
+      // Also invalid if it points at an item the question no longer has
+      if (dep.itemId) {
+        return !questionItemIds.get(dep.questionId)?.has(dep.itemId);
+      }
+      return false;
     });
 
     if (hasInvalidDependency) {

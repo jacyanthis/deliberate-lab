@@ -2234,6 +2234,10 @@
         "questionId": {
           "minLength": 1,
           "type": "string"
+        },
+        "itemId": {
+          "minLength": 1,
+          "type": "string"
         }
       }
     },
@@ -2342,6 +2346,16 @@
         "isRequired": {
           "type": "boolean"
         },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CheckItem"
+          }
+        },
+        "maxSelections": {
+          "minimum": 1,
+          "type": ["null", "integer"]
+        },
         "condition": {
           "anyOf": [
             {
@@ -2359,6 +2373,21 @@
               ]
             }
           ]
+        }
+      }
+    },
+    "CheckItem": {
+      "title": "CheckItem",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "text"],
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
         }
       }
     },

@@ -581,6 +581,7 @@ class ConditionTargetReference(BaseModel):
     )
     stageId: Annotated[str, Field(min_length=1)]
     questionId: Annotated[str, Field(min_length=1)]
+    itemId: Annotated[str | None, Field(min_length=1)] = None
 
 
 class ConditionOperator(StrEnum):
@@ -588,18 +589,21 @@ class ConditionOperator(StrEnum):
     or_ = "or"
 
 
-class MultipleChoiceDisplayType(StrEnum):
-    radio = "radio"
-    dropdown = "dropdown"
-
-
-class AllocationItem(BaseModel):
+class CheckItem(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
     )
     id: Annotated[str, Field(min_length=1)]
     text: str
+
+
+class MultipleChoiceDisplayType(StrEnum):
+    radio = "radio"
+    dropdown = "dropdown"
+
+
+AllocationItem = CheckItem
 
 
 class TOSStageConfig(BaseModel):
@@ -1297,6 +1301,8 @@ class CheckSurveyQuestion(BaseModel):
     kind: Literal["check"] = "check"
     questionTitle: str
     isRequired: bool
+    items: list[CheckItem] | None = None
+    maxSelections: Annotated[int | None, Field(ge=1)] = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
