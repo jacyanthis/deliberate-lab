@@ -3,6 +3,9 @@ import {
   getConditionDependencyValuesWithCurrentStage,
   evaluateConditionWithStageAnswers,
   filterByCondition,
+  surveyQuestionsToConditionTargets,
+  getTargetValuesForAnswer,
+  sanitizeSurveyQuestionConditions,
 } from './condition.utils';
 import {
   ComparisonOperator,
@@ -12,6 +15,9 @@ import {
   ConditionGroup,
   ConditionTargetReference,
   SYSTEM_VARIABLE_NAMESPACE,
+  ComparisonOperator as Operator,
+  getConditionTargetKey,
+  createComparisonCondition,
 } from './condition';
 import {StageKind, StageParticipantAnswer} from '../stages/stage';
 import {
@@ -19,6 +25,9 @@ import {
   SurveyPerParticipantStageParticipantAnswer,
   SurveyQuestionKind,
   SurveyAnswer,
+  SurveyQuestion,
+  CheckSurveyQuestion,
+  TextSurveyQuestion,
 } from '../stages/survey_stage';
 
 // Helper to create SurveyStageParticipantAnswer with proper types
@@ -837,5 +846,195 @@ describe('condition.utils', () => {
         }),
       ).toBe(false);
     });
+  });
+});
+
+describe('checkbox items as condition targets', () => {
+  const itemQuestion: SurveyQuestion = {
+    id: 'systems',
+    kind: SurveyQuestionKind.CHECK,
+    questionTitle: 'Which of these do you use?',
+    isRequired: false,
+    items: [
+      {id: 'radio', text: 'Radio'},
+      {id: 'papers', text: 'Papers'},
+    ],
+    maxSelections: null,
+  };
+
+  const singleQuestion: SurveyQuestion = {
+    id: 'agrees',
+    kind: SurveyQuestionKind.CHECK,
+    questionTitle: 'Do you agree?',
+    isRequired: true,
+  };
+
+  it('should offer one target per item, plus the single checkbox as before', () => {
+    const targets = surveyQuestionsToConditionTargets(
+      [itemQuestion, singleQuestion],
+      'stage1',
+      'Survey',
+    );
+    expect(targets.map((t) => t.label)).toEqual([
+      'Which of these do you use?: Radio',
+      'Which of these do you use?: Papers',
+      'Do you agree?',
+    ]);
+    expect(targets.map((t) => t.type)).toEqual([
+      'boolean',
+      'boolean',
+      'boolean',
+    ]);
+    expect(targets[0].ref).toEqual({
+      stageId: 'stage1',
+      questionId: 'systems',
+      itemId: 'radio',
+    });
+    expect(targets[2].ref).toEqual({stageId: 'stage1', questionId: 'agrees'});
+  });
+
+  it('should resolve each item to its own value', () => {
+    const answers: Record<string, StageParticipantAnswer> = {
+      stage1: createSurveyStageAnswer('stage1', {
+        systems: {
+          id: 'systems',
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: true,
+          checkedMap: {radio: true, papers: false},
+        },
+      }),
+    };
+    const targets: ConditionTargetReference[] = [
+      {stageId: 'stage1', questionId: 'systems', itemId: 'radio'},
+      {stageId: 'stage1', questionId: 'systems', itemId: 'papers'},
+    ];
+    const values = getConditionDependencyValues(targets, answers);
+    expect(values[getConditionTargetKey(targets[0])]).toBe(true);
+    expect(values[getConditionTargetKey(targets[1])]).toBe(false);
+  });
+
+  it('should resolve an item answered in the stage being worked on', () => {
+    const target: ConditionTargetReference = {
+      stageId: 'stage1',
+      questionId: 'systems',
+      itemId: 'radio',
+    };
+    const values = getConditionDependencyValuesWithCurrentStage(
+      [target],
+      'stage1',
+      {
+        systems: {
+          id: 'systems',
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: true,
+          checkedMap: {radio: true},
+        },
+      },
+    );
+    expect(values[getConditionTargetKey(target)]).toBe(true);
+  });
+
+  it('should keep the single checkbox reading its own value', () => {
+    const target: ConditionTargetReference = {
+      stageId: 'stage1',
+      questionId: 'agrees',
+    };
+    const answers: Record<string, StageParticipantAnswer> = {
+      stage1: createSurveyStageAnswer('stage1', {
+        agrees: {
+          id: 'agrees',
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: true,
+        },
+      }),
+    };
+    const values = getConditionDependencyValues([target], answers);
+    expect(values[getConditionTargetKey(target)]).toBe(true);
+  });
+});
+
+describe('getTargetValuesForAnswer', () => {
+  const itemAnswer: SurveyAnswer = {
+    id: 'systems',
+    kind: SurveyQuestionKind.CHECK,
+    isChecked: true,
+    checkedMap: {radio: true, papers: false},
+  };
+
+  it('should give every caller the same keys, one per checked-off item', () => {
+    const values = getTargetValuesForAnswer('stage1', 'systems', itemAnswer);
+    expect(values['stage1::systems']).toBe(true);
+    expect(values['stage1::systems::radio']).toBe(true);
+    expect(values['stage1::systems::papers']).toBe(false);
+  });
+
+  it('should give a single checkbox just its own value', () => {
+    const values = getTargetValuesForAnswer('stage1', 'agrees', {
+      id: 'agrees',
+      kind: SurveyQuestionKind.CHECK,
+      isChecked: false,
+    });
+    expect(values).toEqual({'stage1::agrees': false});
+  });
+
+  it('should give other question kinds just their own value', () => {
+    const values = getTargetValuesForAnswer('stage1', 'rating', {
+      id: 'rating',
+      kind: SurveyQuestionKind.SCALE,
+      value: 4,
+    });
+    expect(values).toEqual({'stage1::rating': 4});
+  });
+});
+
+describe('sanitizeSurveyQuestionConditions with checkbox items', () => {
+  const systems: CheckSurveyQuestion = {
+    id: 'systems',
+    kind: SurveyQuestionKind.CHECK,
+    questionTitle: 'Which of these do you use?',
+    isRequired: false,
+    items: [
+      {id: 'radio', text: 'Radio'},
+      {id: 'papers', text: 'Papers'},
+    ],
+    maxSelections: null,
+  };
+
+  function followUp(itemId?: string): TextSurveyQuestion {
+    return {
+      id: 'followup',
+      kind: SurveyQuestionKind.TEXT,
+      questionTitle: 'Say more',
+      condition: createComparisonCondition(
+        {stageId: 'stage1', questionId: 'systems', itemId},
+        Operator.EQUALS,
+        true,
+      ),
+    };
+  }
+
+  it('should keep a rule that points at an item the question still has', () => {
+    const result = sanitizeSurveyQuestionConditions(
+      [systems, followUp('radio')],
+      'stage1',
+    );
+    expect(result[1].condition).toBeDefined();
+  });
+
+  it('should drop a rule that points at an item the question lost', () => {
+    const withoutRadio = {...systems, items: [{id: 'papers', text: 'Papers'}]};
+    const result = sanitizeSurveyQuestionConditions(
+      [withoutRadio, followUp('radio')],
+      'stage1',
+    );
+    expect(result[1].condition).toBeUndefined();
+  });
+
+  it('should keep a rule on the question itself', () => {
+    const result = sanitizeSurveyQuestionConditions(
+      [systems, followUp()],
+      'stage1',
+    );
+    expect(result[1].condition).toBeDefined();
   });
 });

@@ -13,6 +13,7 @@ export const ConditionTargetReferenceSchema = Type.Object(
   {
     stageId: Type.String({minLength: 1}),
     questionId: Type.String({minLength: 1}),
+    itemId: Type.Optional(Type.String({minLength: 1})),
   },
   {$id: 'ConditionTargetReference', ...strict},
 );

@@ -174,6 +174,18 @@ export class ExperimentEditor extends Service {
         }
       }
 
+      if (question.kind === SurveyQuestionKind.CHECK) {
+        const limit = question.maxSelections;
+        if (limit !== null && limit !== undefined) {
+          if (!Number.isInteger(limit) || limit <= 0) {
+            errors.push(
+              `${questionPrefix} ("${question.questionTitle}"): maximum selections must be an integer greater than 0`,
+            );
+            return errors;
+          }
+        }
+      }
+
       if (question.kind === SurveyQuestionKind.ALLOCATION) {
         if (!question.items || question.items.length === 0) {
           errors.push(

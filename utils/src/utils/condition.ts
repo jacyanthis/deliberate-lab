@@ -35,6 +35,8 @@ export const SYSTEM_VARIABLE_NAMESPACE = '__system_variables__';
 export interface ConditionTargetReference {
   stageId: string;
   questionId: string;
+  // For a checkbox question that offers items, which item this refers to
+  itemId?: string;
 }
 
 export interface ComparisonCondition extends BaseCondition {
@@ -174,13 +176,14 @@ export function getConditionOperatorLabel(operator: ConditionOperator): string {
 export function getConditionTargetKey(
   target: ConditionTargetReference,
 ): string {
-  return `${target.stageId}::${target.questionId}`;
+  const base = `${target.stageId}::${target.questionId}`;
+  return target.itemId ? `${base}::${target.itemId}` : base;
 }
 
 /** Parse a condition target key back into a reference */
 export function parseConditionTargetKey(key: string): ConditionTargetReference {
-  const [stageId, questionId] = key.split('::');
-  return {stageId, questionId};
+  const [stageId, questionId, itemId] = key.split('::');
+  return itemId ? {stageId, questionId, itemId} : {stageId, questionId};
 }
 
 /** Helper to deduplicate condition target references */

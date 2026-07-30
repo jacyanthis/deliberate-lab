@@ -11,6 +11,7 @@ import {renderConditionEditor} from '../../shared/condition_editor.utils';
 import {
   AllocationItem,
   AllocationSurveyQuestion,
+  CheckItem,
   CheckSurveyQuestion,
   Condition,
   getConditionTargetsFromStages,
@@ -26,6 +27,7 @@ import {
   SurveyQuestionKind,
   TextSurveyQuestion,
   createAllocationItem,
+  createCheckItem,
   createMultipleChoiceItem,
 } from '@deliberation-lab/utils';
 
@@ -165,6 +167,17 @@ export class SurveyEditor extends MobxLitElement {
     this.updateStageQuestions(questions);
   }
 
+  /** Update one question, clearing any condition the edit invalidates. */
+  private updateQuestionWithSanitize(question: SurveyQuestion, index: number) {
+    if (!this.stage) return;
+
+    this.updateStageQuestions([
+      ...this.stage.questions.slice(0, index),
+      question,
+      ...this.stage.questions.slice(index + 1),
+    ]);
+  }
+
   updateQuestion(question: SurveyQuestion, index: number) {
     if (!this.stage) return;
 
@@ -294,6 +307,86 @@ export class SurveyEditor extends MobxLitElement {
       this.updateQuestion(updatedQuestion, index);
     };
 
+    const items = question.items ?? [];
+
+    const updateMaxSelections = (e: InputEvent) => {
+      const value = (e.target as HTMLInputElement).value;
+      const maxSelections = value ? parseInt(value, 10) : null;
+      this.updateQuestion({...question, maxSelections}, index);
+    };
+
+    const renderItem = (item: CheckItem, itemIndex: number) => {
+      const updateItem = (e: InputEvent) => {
+        const text = (e.target as HTMLTextAreaElement).value;
+        const updated = [
+          ...items.slice(0, itemIndex),
+          {...item, text},
+          ...items.slice(itemIndex + 1),
+        ];
+        this.updateQuestion({...question, items: updated}, index);
+      };
+
+      const deleteItem = () => {
+        const updated = [
+          ...items.slice(0, itemIndex),
+          ...items.slice(itemIndex + 1),
+        ];
+        // Sanitizing update, so a later question's rule that pointed at this
+        // item is dropped rather than left behind
+        this.updateQuestionWithSanitize({...question, items: updated}, index);
+      };
+
+      const moveItem = (offset: number) => {
+        const target = itemIndex + offset;
+        const updated = [...items];
+        updated[itemIndex] = items[target];
+        updated[target] = item;
+        this.updateQuestion({...question, items: updated}, index);
+      };
+
+      return html`
+        <div class="mc-item">
+          <pr-textarea-template
+            placeholder="Add text for checkbox item"
+            .value=${item.text}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @input=${updateItem}
+          >
+          </pr-textarea-template>
+          <pr-icon-button
+            color="neutral"
+            icon="arrow_upward"
+            padding="small"
+            size="small"
+            variant="default"
+            ?disabled=${itemIndex === 0 || !this.experimentEditor.canEditStages}
+            @click=${() => moveItem(-1)}
+          >
+          </pr-icon-button>
+          <pr-icon-button
+            color="neutral"
+            icon="arrow_downward"
+            padding="small"
+            size="small"
+            variant="default"
+            ?disabled=${itemIndex === items.length - 1 ||
+            !this.experimentEditor.canEditStages}
+            @click=${() => moveItem(1)}
+          >
+          </pr-icon-button>
+          <pr-icon-button
+            icon="close"
+            color="neutral"
+            padding="small"
+            variant="default"
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @click=${deleteItem}
+          >
+          </pr-icon-button>
+        </div>
+      `;
+    };
+
     return html`
       <div class="header">
         <div class="left">
@@ -313,6 +406,41 @@ export class SurveyEditor extends MobxLitElement {
           >Make this question required for participants</span
         >
       </label>
+      <div class="description">
+        <b>Optional:</b> Add items to ask several checkboxes under one title. A
+        question with no items is a single checkbox.
+      </div>
+      ${items.map((item, itemIndex) => renderItem(item, itemIndex))}
+      <pr-button
+        color="secondary"
+        variant="tonal"
+        ?disabled=${!this.experimentEditor.canEditStages}
+        @click=${() => {
+          this.updateQuestion(
+            {...question, items: [...items, createCheckItem()]},
+            index,
+          );
+        }}
+      >
+        Add checkbox item
+      </pr-button>
+      ${items.length
+        ? html`
+            <div class="scale-value-editors">
+              <div class="scale-value-editor">
+                <label>Maximum selections (any if left empty)</label>
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Any"
+                  .value=${question.maxSelections?.toString() ?? ''}
+                  ?disabled=${!this.experimentEditor.canEditStages}
+                  @input=${updateMaxSelections}
+                />
+              </div>
+            </div>
+          `
+        : nothing}
       ${this.renderQuestionConditionEditor(question, index)}
     `;
   }

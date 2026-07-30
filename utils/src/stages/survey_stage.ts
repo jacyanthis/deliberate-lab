@@ -70,6 +70,15 @@ export interface TextSurveyQuestion extends BaseSurveyQuestion {
 export interface CheckSurveyQuestion extends BaseSurveyQuestion {
   kind: SurveyQuestionKind.CHECK;
   isRequired: boolean; // Whether a check is required.
+  // Items to check off. Absent for a question that is a single checkbox.
+  items?: CheckItem[];
+  // How many items may be checked, or null for as many as the participant likes
+  maxSelections?: number | null;
+}
+
+export interface CheckItem {
+  id: string;
+  text: string;
 }
 
 export interface MultipleChoiceSurveyQuestion extends BaseSurveyQuestion {
@@ -149,6 +158,8 @@ export interface TextSurveyAnswer extends BaseSurveyAnswer {
 export interface CheckSurveyAnswer extends BaseSurveyAnswer {
   kind: SurveyQuestionKind.CHECK;
   isChecked: boolean;
+  // Map of item ID to whether it is checked, for questions that have items
+  checkedMap?: Record<string, boolean>;
 }
 
 export interface MultipleChoiceSurveyAnswer extends BaseSurveyAnswer {
@@ -228,7 +239,17 @@ export function createCheckSurveyQuestion(
     kind: SurveyQuestionKind.CHECK,
     questionTitle: config.questionTitle ?? '',
     isRequired: config.isRequired ?? false,
+    items: config.items ?? [],
+    maxSelections: config.maxSelections ?? null,
     condition: config.condition,
+  };
+}
+
+/** Create check item. */
+export function createCheckItem(config: Partial<CheckItem> = {}): CheckItem {
+  return {
+    id: config.id ?? generateId(),
+    text: config.text ?? '',
   };
 }
 
@@ -370,6 +391,35 @@ export function getAllocationTotal(
     (total, item) => total + (answer.allocationMap[item.id] ?? 0),
     0,
   );
+}
+
+/** Returns the IDs of a check question's items that the participant checked. */
+export function getCheckedItemIds(
+  question: CheckSurveyQuestion,
+  answer: CheckSurveyAnswer | undefined,
+) {
+  if (!answer?.checkedMap) {
+    return [];
+  }
+  const checkedMap = answer.checkedMap;
+  return (question.items ?? [])
+    .filter((item) => checkedMap[item.id])
+    .map((item) => item.id);
+}
+
+/** Returns how many of a check question's items may still be checked,
+ *  or null when the question sets no reachable limit.
+ */
+export function getRemainingCheckSelections(
+  question: CheckSurveyQuestion,
+  answer: CheckSurveyAnswer | undefined,
+) {
+  const limit = question.maxSelections;
+  const itemCount = question.items?.length ?? 0;
+  if (limit === null || limit === undefined || limit >= itemCount) {
+    return null;
+  }
+  return Math.max(0, limit - getCheckedItemIds(question, answer).length);
 }
 
 /** Returns true if any multiple choice options contain an image. */
@@ -516,6 +566,14 @@ export function isSurveyAnswerComplete(
 
   switch (answer.kind) {
     case SurveyQuestionKind.CHECK:
+      if (
+        question?.kind === SurveyQuestionKind.CHECK &&
+        question.items?.length
+      ) {
+        return (
+          getCheckedItemIds(question, answer as CheckSurveyAnswer).length > 0
+        );
+      }
       return (answer as CheckSurveyAnswer).isChecked;
 
     case SurveyQuestionKind.TEXT:
