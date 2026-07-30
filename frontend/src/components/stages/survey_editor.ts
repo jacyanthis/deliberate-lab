@@ -9,6 +9,8 @@ import {core} from '../../core/core';
 import {ExperimentEditor} from '../../services/experiment.editor';
 import {renderConditionEditor} from '../../shared/condition_editor.utils';
 import {
+  AllocationItem,
+  AllocationSurveyQuestion,
   CheckSurveyQuestion,
   Condition,
   getConditionTargetsFromStages,
@@ -23,6 +25,7 @@ import {
   SurveyQuestion,
   SurveyQuestionKind,
   TextSurveyQuestion,
+  createAllocationItem,
   createMultipleChoiceItem,
 } from '@deliberation-lab/utils';
 
@@ -84,6 +87,8 @@ export class SurveyEditor extends MobxLitElement {
         return 'scale from 1 to 10';
       case SurveyQuestionKind.TEXT:
         return 'freeform text';
+      case SurveyQuestionKind.ALLOCATION:
+        return 'allocation';
       default:
         return nothing;
     }
@@ -99,6 +104,8 @@ export class SurveyEditor extends MobxLitElement {
         return this.renderScaleQuestion(question, index);
       case SurveyQuestionKind.TEXT:
         return this.renderTextQuestion(question, index);
+      case SurveyQuestionKind.ALLOCATION:
+        return this.renderAllocationQuestion(question, index);
       default:
         return nothing;
     }
@@ -582,6 +589,165 @@ export class SurveyEditor extends MobxLitElement {
           Optional: Display the scale as a slider instead of radio buttons
         </span>
       </label>
+      ${this.renderQuestionConditionEditor(question, index)}
+    `;
+  }
+
+  private renderAllocationQuestion(
+    question: AllocationSurveyQuestion,
+    index: number,
+  ) {
+    const updateTotalValue = (e: InputEvent) => {
+      const totalValue =
+        parseInt((e.target as HTMLInputElement).value, 10) || 100;
+      this.updateQuestion({...question, totalValue}, index);
+    };
+
+    const updateStepSize = (e: InputEvent) => {
+      const value = parseInt((e.target as HTMLInputElement).value, 10);
+      const stepSize = isNaN(value) ? 1 : value;
+      this.updateQuestion({...question, stepSize}, index);
+    };
+
+    const updateUnitText = (e: InputEvent) => {
+      const unitText = (e.target as HTMLTextAreaElement).value;
+      this.updateQuestion({...question, unitText}, index);
+    };
+
+    const renderItem = (item: AllocationItem, itemIndex: number) => {
+      const updateItem = (e: InputEvent) => {
+        const text = (e.target as HTMLTextAreaElement).value;
+        const items = [
+          ...question.items.slice(0, itemIndex),
+          {...item, text},
+          ...question.items.slice(itemIndex + 1),
+        ];
+        this.updateQuestion({...question, items}, index);
+      };
+
+      const deleteItem = () => {
+        const items = [
+          ...question.items.slice(0, itemIndex),
+          ...question.items.slice(itemIndex + 1),
+        ];
+        this.updateQuestion({...question, items}, index);
+      };
+
+      const moveItem = (offset: number) => {
+        const target = itemIndex + offset;
+        const items = [...question.items];
+        items[itemIndex] = question.items[target];
+        items[target] = item;
+        this.updateQuestion({...question, items}, index);
+      };
+
+      return html`
+        <div class="mc-item">
+          <pr-textarea-template
+            placeholder="Add text for allocation item"
+            .value=${item.text}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @input=${updateItem}
+          >
+          </pr-textarea-template>
+          <pr-icon-button
+            color="neutral"
+            icon="arrow_upward"
+            padding="small"
+            size="small"
+            variant="default"
+            ?disabled=${itemIndex === 0 || !this.experimentEditor.canEditStages}
+            @click=${() => moveItem(-1)}
+          >
+          </pr-icon-button>
+          <pr-icon-button
+            color="neutral"
+            icon="arrow_downward"
+            padding="small"
+            size="small"
+            variant="default"
+            ?disabled=${itemIndex === question.items.length - 1 ||
+            !this.experimentEditor.canEditStages}
+            @click=${() => moveItem(1)}
+          >
+          </pr-icon-button>
+          <pr-icon-button
+            icon="close"
+            color="neutral"
+            padding="small"
+            variant="default"
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @click=${deleteItem}
+          >
+          </pr-icon-button>
+        </div>
+      `;
+    };
+
+    return html`
+      <div class="header">
+        <div class="left">
+          ${this.renderQuestionTitleEditor(question, index)}
+        </div>
+        ${this.renderQuestionNav(question, index)}
+      </div>
+      <div class="description">
+        <b>Allocation total:</b> Set the amount that participants divide across
+        the items. The step size must divide the total exactly.
+      </div>
+      <div class="scale-value-editors">
+        <div class="scale-value-editor">
+          <label>Total value</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            required
+            .value=${question.totalValue.toString()}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @input=${updateTotalValue}
+          />
+        </div>
+        <div class="scale-value-editor">
+          <label>Step size</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            required
+            .value=${(question.stepSize ?? 1).toString()}
+            ?disabled=${!this.experimentEditor.canEditStages}
+            @input=${updateStepSize}
+          />
+        </div>
+      </div>
+      <div class="scale-text-editors">
+        <pr-textarea-template
+          label='Unit text (default is percentage such as "42%")'
+          variant="outlined"
+          placeholder="e.g., points"
+          size="small"
+          .value=${question.unitText ?? ''}
+          ?disabled=${!this.experimentEditor.canEditStages}
+          @input=${updateUnitText}
+        >
+        </pr-textarea-template>
+      </div>
+      <div class="description">
+        <b>Allocation items:</b> Each item gets its own slider.
+      </div>
+      ${question.items.map((item, itemIndex) => renderItem(item, itemIndex))}
+      <pr-button
+        color="secondary"
+        variant="tonal"
+        ?disabled=${!this.experimentEditor.canEditStages}
+        @click=${() => {
+          const items = [...question.items, createAllocationItem()];
+          this.updateQuestion({...question, items}, index);
+        }}
+      >
+        Add allocation item
+      </pr-button>
       ${this.renderQuestionConditionEditor(question, index)}
     `;
   }

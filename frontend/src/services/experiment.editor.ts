@@ -171,6 +171,36 @@ export class ExperimentEditor extends Service {
         }
       }
 
+      if (question.kind === SurveyQuestionKind.ALLOCATION) {
+        if (!question.items || question.items.length === 0) {
+          errors.push(
+            `${questionPrefix} ("${question.questionTitle}"): must have at least one item`,
+          );
+          return errors;
+        }
+        const step = question.stepSize ?? 1;
+        if (
+          !Number.isInteger(question.totalValue) ||
+          question.totalValue <= 0
+        ) {
+          errors.push(
+            `${questionPrefix} ("${question.questionTitle}"): total value must be an integer greater than 0`,
+          );
+          return errors;
+        }
+        if (!Number.isInteger(step) || step <= 0) {
+          errors.push(
+            `${questionPrefix} ("${question.questionTitle}"): step size must be an integer greater than 0`,
+          );
+          return errors;
+        }
+        if (question.totalValue % step !== 0) {
+          errors.push(
+            `${questionPrefix} ("${question.questionTitle}"): step size must divide the total value (${question.totalValue}) exactly`,
+          );
+        }
+      }
+
       return errors;
     };
 

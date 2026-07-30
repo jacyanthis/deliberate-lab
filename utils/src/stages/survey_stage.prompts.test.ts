@@ -11,6 +11,7 @@ import {
   CheckSurveyQuestion,
   MultipleChoiceSurveyQuestion,
   ScaleSurveyQuestion,
+  AllocationSurveyQuestion,
   SurveyPerParticipantStageParticipantAnswer,
 } from './survey_stage';
 
@@ -288,5 +289,69 @@ describe('Display strings for survey/survey-per-participant stages', () => {
     * About p3: 6 (Scale: 1 = Bad, 3 = Okay, 5 = Good)`;
       expect(result).toBe(`${expectedP1}\n${expectedP2}`);
     });
+  });
+});
+
+describe('Display strings for allocation questions', () => {
+  const allocationQuestion: AllocationSurveyQuestion = {
+    id: 'allocation-q',
+    kind: SurveyQuestionKind.ALLOCATION,
+    questionTitle: 'Divide the budget.',
+    items: [
+      {id: 'roads', text: 'Roads'},
+      {id: 'schools', text: 'Schools'},
+    ],
+    totalValue: 100,
+    stepSize: 5,
+    unitText: '%',
+  };
+
+  const allocationAnswer: SurveyStageParticipantAnswer = {
+    id: 'stage3',
+    kind: StageKind.SURVEY,
+    answerMap: {
+      'allocation-q': {
+        id: 'allocation-q',
+        kind: SurveyQuestionKind.ALLOCATION,
+        allocationMap: {roads: 60, schools: 40},
+      },
+    },
+  };
+
+  it('should describe the question when there are no answers', () => {
+    const result = getSurveyStageDisplayPromptString([], [allocationQuestion]);
+    expect(result).toBe(
+      '* Divide the budget. (Divide 100 % across: Roads, Schools)',
+    );
+  });
+
+  it('should format an allocation answer', () => {
+    const participantAnswers = [
+      {...mockParticipant1, answer: allocationAnswer},
+    ];
+    const result = getSurveyStageDisplayPromptString(participantAnswers, [
+      allocationQuestion,
+    ]);
+    expect(result).toBe(`* Participant Participant 1's answers:
+  * Divide the budget.: Roads: 60 %, Schools: 40 % (out of 100 %)`);
+  });
+
+  it('should show zero for an item with no allocation', () => {
+    const partialAnswer: SurveyStageParticipantAnswer = {
+      id: 'stage3',
+      kind: StageKind.SURVEY,
+      answerMap: {
+        'allocation-q': {
+          id: 'allocation-q',
+          kind: SurveyQuestionKind.ALLOCATION,
+          allocationMap: {roads: 100},
+        },
+      },
+    };
+    const result = getSurveyStageDisplayPromptString(
+      [{...mockParticipant1, answer: partialAnswer}],
+      [allocationQuestion],
+    );
+    expect(result).toContain('Roads: 100 %, Schools: 0 % (out of 100 %)');
   });
 });

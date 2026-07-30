@@ -208,7 +208,12 @@ export function surveyQuestionsToConditionTargets(
   stageId: string,
   stageName?: string,
 ): ConditionTarget[] {
-  return questions.map((q) => {
+  // Allocation answers hold one value per item, so they are not offered here
+  const targetableQuestions = questions.filter(
+    (q) => q.kind !== SurveyQuestionKind.ALLOCATION,
+  );
+
+  return targetableQuestions.map((q) => {
     let type: ConditionTarget['type'] = 'text';
     let choices: ConditionTarget['choices'] = undefined;
 
