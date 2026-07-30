@@ -1197,5 +1197,96 @@ describe('API Experiment Creation Integration Tests', () => {
         'item2',
       ]);
     });
+
+    it('should accept experiment creation with a valid allocation question', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-allocation',
+        questions: [
+          {
+            id: 'q-allocation',
+            kind: SurveyQuestionKind.ALLOCATION,
+            questionTitle: 'Divide the budget.',
+            items: [
+              {id: 'roads', text: 'Roads'},
+              {id: 'schools', text: 'Schools'},
+            ],
+            totalValue: 100,
+            stepSize: 5,
+            unitText: '%',
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Allocation Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      createdExperimentIds.push(data.experiment.id);
+
+      const stagesResponse = await apiRequest(
+        'GET',
+        `/v1/experiments/${data.experiment.id}`,
+      );
+      const stagesData = await stagesResponse.json();
+      const savedStage = stagesData.stageMap['survey-allocation'];
+      expect(savedStage.questions[0].items).toHaveLength(2);
+      expect(savedStage.questions[0].totalValue).toBe(100);
+      expect(savedStage.questions[0].unitText).toBe('%');
+    });
+
+    it('should reject an allocation question whose step size does not divide the total', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-allocation-step',
+        questions: [
+          {
+            id: 'q-allocation-step',
+            kind: SurveyQuestionKind.ALLOCATION,
+            questionTitle: 'Divide the budget.',
+            items: [{id: 'roads', text: 'Roads'}],
+            totalValue: 100,
+            stepSize: 3,
+            unitText: '',
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Bad Allocation Step Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(422);
+      const data = await response.json();
+      expect(data.error).toContain('must divide the total value');
+    });
+
+    it('should reject an allocation question with no items', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-allocation-items',
+        questions: [
+          {
+            id: 'q-allocation-items',
+            kind: SurveyQuestionKind.ALLOCATION,
+            questionTitle: 'Divide the budget.',
+            items: [],
+            totalValue: 100,
+            stepSize: 5,
+            unitText: '',
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Empty Allocation Items Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(422);
+      const data = await response.json();
+      expect(data.error).toContain('must have at least one item');
+    });
   });
 });

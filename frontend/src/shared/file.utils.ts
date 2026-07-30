@@ -1172,6 +1172,22 @@ export function getSurveyStageCSVColumns(
             : scaleAnswer,
         );
         break;
+      case SurveyQuestionKind.ALLOCATION:
+        const allocationMap =
+          answer?.kind === SurveyQuestionKind.ALLOCATION
+            ? answer.allocationMap
+            : {};
+        // Add a column for every allocation item
+        question.items.forEach((item, index) => {
+          columns.push(
+            !participant
+              ? `Item ${index + 1} (${item.id}) - "${toCSV(
+                  question.questionTitle,
+                )}" - Survey ${surveyStage.id}`
+              : (allocationMap[item.id]?.toString() ?? ''),
+          );
+        });
+        break;
       default:
         break;
     }
@@ -1276,6 +1292,22 @@ export function getSurveyPerParticipantStageCSVColumns(
               ? `"${toCSV(question.questionTitle)}" - ${participantId} - Per-Participant Survey ${stage.id}`
               : scaleAnswer,
           );
+          break;
+        case SurveyQuestionKind.ALLOCATION:
+          const allocationMap =
+            answer?.kind === SurveyQuestionKind.ALLOCATION
+              ? answer.allocationMap
+              : {};
+          // Add a column for every allocation item
+          question.items.forEach((item, index) => {
+            columns.push(
+              !participant
+                ? `Item ${index + 1} (${item.id}) - "${toCSV(
+                    question.questionTitle,
+                  )}" - ${participantId} - Per-Participant Survey ${stage.id}`
+                : (allocationMap[item.id]?.toString() ?? ''),
+            );
+          });
           break;
         default:
           break;

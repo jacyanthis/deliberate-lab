@@ -7,6 +7,7 @@ import {customElement, property} from 'lit/decorators.js';
 import {classMap} from 'lit/directives/class-map.js';
 
 import {
+  AllocationSurveyQuestion,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   MultipleChoiceItem,
@@ -21,6 +22,8 @@ import {
   SurveyStageParticipantAnswer,
   TextSurveyAnswer,
   TextSurveyQuestion,
+  formatAllocationValue,
+  getAllocationTotal,
   isMultipleChoiceImageQuestion,
   isSurveyComplete,
   isSurveyAnswerComplete,
@@ -68,9 +71,66 @@ export class SurveyView extends MobxLitElement {
         return this.renderScaleQuestion(question);
       case SurveyQuestionKind.TEXT:
         return this.renderTextQuestion(question);
+      case SurveyQuestionKind.ALLOCATION:
+        return this.renderAllocationQuestion(question);
       default:
         return nothing;
     }
+  }
+
+  private renderAllocationQuestion(question: AllocationSurveyQuestion) {
+    const getAnswer = () => {
+      if (!this.stage) return undefined;
+      const answer = this.participantAnswerService.getSurveyAnswer(
+        this.stage.id,
+        question.id,
+      );
+      if (answer && answer.kind === SurveyQuestionKind.ALLOCATION) {
+        return answer;
+      }
+      return undefined;
+    };
+
+    const answer = getAnswer();
+    const allocated = getAllocationTotal(question, answer);
+    const isExact = allocated === question.totalValue;
+    const titleClasses = classMap({required: !isExact});
+
+    return html`
+      <div class="question">
+        <div class=${titleClasses}>
+          ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
+        </div>
+        ${question.items.map((item) => {
+          const value = answer?.allocationMap[item.id] ?? 0;
+          const stepSize = question.stepSize ?? 1;
+          return html`
+            <div class="allocation-item">
+              <div class="allocation-item-text">
+                ${unsafeHTML(convertMarkdownToHTML(item.text))}
+              </div>
+              <md-slider
+                min="0"
+                max=${question.totalValue}
+                step=${stepSize}
+                value=${value}
+                ticks
+                labeled
+                disabled
+              >
+              </md-slider>
+            </div>
+          `;
+        })}
+        <div class="allocation-total">
+          ${allocated === 0
+            ? 'No answer yet'
+            : html`Allocated
+              ${formatAllocationValue(allocated, question.unitText)} of
+              ${formatAllocationValue(question.totalValue, question.unitText)}`}
+        </div>
+      </div>
+    `;
   }
 
   private renderCheckQuestion(question: CheckSurveyQuestion) {

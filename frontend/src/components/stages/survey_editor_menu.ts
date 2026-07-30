@@ -11,6 +11,7 @@ import {
   SurveyStageConfig,
   SurveyQuestion,
   StageKind,
+  createAllocationSurveyQuestion,
   createCheckSurveyQuestion,
   createMultipleChoiceSurveyQuestion,
   createScaleSurveyQuestion,
@@ -51,6 +52,9 @@ export class SurveyEditorMenu extends MobxLitElement {
           <div class="menu-item" role="button" @click=${this.addScale}>
             Scale
           </div>
+          <div class="menu-item" role="button" @click=${this.addAllocation}>
+            Allocation
+          </div>
         </div>
       </pr-menu>
     `;
@@ -81,6 +85,10 @@ export class SurveyEditorMenu extends MobxLitElement {
 
   private addScale() {
     this.addQuestion(createScaleSurveyQuestion());
+  }
+
+  private addAllocation() {
+    this.addQuestion(createAllocationSurveyQuestion());
   }
 }
 
