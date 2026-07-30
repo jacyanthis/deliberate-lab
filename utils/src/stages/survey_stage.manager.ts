@@ -6,6 +6,7 @@ import {VariableDefinition} from '../variables';
 import {resolveTemplateVariables} from '../variables.template';
 import {
   AllocationSurveyQuestion,
+  CheckSurveyQuestion,
   MultipleChoiceSurveyQuestion,
   ScaleSurveyQuestion,
   SurveyQuestion,
@@ -52,6 +53,23 @@ export function resolveSurveyQuestionVariables(
             ...option,
             text: resolveTemplateVariables(
               option.text,
+              variableDefinitions,
+              valueMap,
+            ),
+          })),
+        };
+      }
+      case SurveyQuestionKind.CHECK: {
+        const checkQuestion = baseResolved as CheckSurveyQuestion;
+        if (!checkQuestion.items?.length) {
+          return checkQuestion;
+        }
+        return {
+          ...checkQuestion,
+          items: checkQuestion.items.map((item) => ({
+            ...item,
+            text: resolveTemplateVariables(
+              item.text,
               variableDefinitions,
               valueMap,
             ),

@@ -15,11 +15,11 @@ import {
   createSurveyStagePublicData,
   evaluateCondition,
   Experiment,
-  extractAnswerValue,
   extractMultipleConditionDependencies,
   FlipCardStageParticipantAnswer,
   FlipCardStagePublicData,
   getConditionTargetKey,
+  getTargetValuesForAnswer,
   MultiAssetAllocationStageParticipantAnswer,
   MultiAssetAllocationStagePublicData,
   ParticipantProfileExtended,
@@ -1982,8 +1982,14 @@ function buildTargetValuesForParticipant(
     if (!participantAnswers) continue;
 
     for (const [questionId, answer] of Object.entries(participantAnswers)) {
-      const key = getConditionTargetKey({stageId, questionId});
-      targetValues[key] = extractAnswerValue(answer);
+      const answerValues = getTargetValuesForAnswer(
+        stageId,
+        questionId,
+        answer,
+      );
+      for (const [key, value] of Object.entries(answerValues)) {
+        targetValues[key] = value;
+      }
     }
   }
 
