@@ -16,6 +16,7 @@ import {
   TextSurveyAnswer,
   CheckSurveyQuestion,
   CheckSurveyAnswer,
+  getCheckedItemIds,
   MultipleChoiceSurveyQuestion,
   MultipleChoiceSurveyAnswer,
   ScaleSurveyQuestion,
@@ -45,6 +46,21 @@ function formatAllocationText(
           question.unitText,
         )}`,
     )
+    .join(', ');
+}
+
+/** Helper function to list the items a participant checked. */
+function formatCheckedItemText(
+  question: CheckSurveyQuestion,
+  answer: CheckSurveyAnswer | undefined,
+): string {
+  const checked = getCheckedItemIds(question, answer);
+  if (!checked.length) {
+    return 'none';
+  }
+  return (question.items ?? [])
+    .filter((item) => checked.includes(item.id))
+    .map((item) => item.text)
     .join(', ');
 }
 
@@ -90,6 +106,13 @@ function getSurveyStageQuestion(
       const freeformAnswer = `\nYour answer: ${answer?.kind === SurveyQuestionKind.TEXT ? answer.answer : 'none'}`;
       return `Question: ${question.questionTitle}${freeformAnswer}`;
     case SurveyQuestionKind.CHECK:
+      if (question.items?.length) {
+        const checkedText = formatCheckedItemText(
+          question,
+          answer?.kind === SurveyQuestionKind.CHECK ? answer : undefined,
+        );
+        return `Question: ${question.questionTitle}\nAnswer: ${checkedText}`;
+      }
       const checkAnswer = `\nAnswer: ${answer?.kind === SurveyQuestionKind.CHECK ? answer.isChecked : 'none'}`;
       return `Question: ${question.questionTitle}${checkAnswer}`;
     case SurveyQuestionKind.MULTIPLE_CHOICE:
@@ -127,6 +150,17 @@ export function createAgentParticipantSurveyQuestionPrompt(
     case SurveyQuestionKind.TEXT:
       return `Please answer the following question: ${question.questionTitle}`;
     case SurveyQuestionKind.CHECK:
+      if (question.items?.length) {
+        const checkItems = question.items
+          .map((item) => `- ${item.id}: ${item.text}`)
+          .join('\n');
+        const limit = question.maxSelections;
+        const cap =
+          limit !== null && limit !== undefined && limit < question.items.length
+            ? ` Choose no more than ${limit}.`
+            : '';
+        return `${question.questionTitle}\n${checkItems}\nRespond true for each item that applies to you, otherwise false.${cap}`;
+      }
       return `${question.questionTitle}\nRespond true if you agree, otherwise false.`;
     case SurveyQuestionKind.MULTIPLE_CHOICE:
       const options = question.options
@@ -160,6 +194,19 @@ function getSchemaForQuestion(
     case SurveyQuestionKind.TEXT:
       return {type: StructuredOutputDataType.STRING, description};
     case SurveyQuestionKind.CHECK:
+      if (question.items?.length) {
+        return {
+          type: StructuredOutputDataType.OBJECT,
+          description,
+          properties: question.items.map((item) => ({
+            name: item.id,
+            schema: {
+              type: StructuredOutputDataType.BOOLEAN,
+              description: item.text,
+            },
+          })),
+        };
+      }
       return {type: StructuredOutputDataType.BOOLEAN, description};
     case SurveyQuestionKind.MULTIPLE_CHOICE:
       return {
@@ -263,6 +310,19 @@ function parseAnswerForQuestion(
         answer: rawAnswer as string,
       };
     case SurveyQuestionKind.CHECK:
+      if (question.items?.length) {
+        const rawChecks = rawAnswer as Record<string, unknown>;
+        const checkedMap: Record<string, boolean> = {};
+        for (const item of question.items) {
+          checkedMap[item.id] = rawChecks[item.id] === true;
+        }
+        return {
+          id: question.id,
+          kind: question.kind,
+          isChecked: Object.values(checkedMap).some((checked) => checked),
+          checkedMap,
+        };
+      }
       return {
         id: question.id,
         kind: question.kind,
@@ -374,7 +434,21 @@ function getSurveyQuestionTextForPrompt(question: SurveyQuestion) {
       break;
     case SurveyQuestionKind.CHECK:
       const checkQ = question as CheckSurveyQuestion;
-      questionText += ` (Checkbox${checkQ.isRequired ? ', required' : ''})`;
+      const checkDetails = [`Checkbox${checkQ.isRequired ? ', required' : ''}`];
+      if (checkQ.items?.length) {
+        checkDetails.push(
+          `items: ${checkQ.items.map((item) => item.text).join(', ')}`,
+        );
+        const limit = checkQ.maxSelections;
+        if (
+          limit !== null &&
+          limit !== undefined &&
+          limit < checkQ.items.length
+        ) {
+          checkDetails.push(`at most ${limit}`);
+        }
+      }
+      questionText += ` (${checkDetails.join('; ')})`;
       break;
     case SurveyQuestionKind.MULTIPLE_CHOICE:
       const mcQ = question as MultipleChoiceSurveyQuestion;
@@ -562,6 +636,10 @@ function formatSingleAnswer(
 
     case SurveyQuestionKind.CHECK:
       const checkAnswer = answer as CheckSurveyAnswer;
+      const checkQuestion = question as CheckSurveyQuestion;
+      if (checkQuestion.items?.length) {
+        return formatCheckedItemText(checkQuestion, checkAnswer);
+      }
       return checkAnswer.isChecked ? 'Checked' : 'Not checked';
 
     case SurveyQuestionKind.MULTIPLE_CHOICE:

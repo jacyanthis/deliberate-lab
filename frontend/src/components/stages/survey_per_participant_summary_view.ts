@@ -12,6 +12,8 @@ import {
   AllocationSurveyAnswer,
   AllocationSurveyQuestion,
   CheckSurveyAnswer,
+  CheckSurveyQuestion,
+  getCheckedItemIds,
   MultipleChoiceSurveyAnswer,
   MultipleChoiceSurveyQuestion,
   ParticipantProfile,
@@ -147,6 +149,20 @@ export class SurveySummary extends MobxLitElement {
         return this.makeCell(answerText!);
 
       case SurveyQuestionKind.CHECK:
+        const checkQuestion = question as CheckSurveyQuestion;
+        if (checkQuestion.items?.length) {
+          const checkedIds = getCheckedItemIds(
+            checkQuestion,
+            answer as CheckSurveyAnswer,
+          );
+          answerText = checkedIds.length
+            ? (checkQuestion.items ?? [])
+                .filter((item) => checkedIds.includes(item.id))
+                .map((item) => item.text)
+                .join(', ')
+            : 'None checked';
+          return this.makeCell(answerText);
+        }
         answerText = (answer as CheckSurveyAnswer).isChecked
           ? '✅ Checked'
           : '☑️ Unchecked';

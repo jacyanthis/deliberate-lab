@@ -294,4 +294,50 @@ describe('validateSurveyQuestions', () => {
       expect(res.error).toContain('must divide the total value (100) exactly');
     }
   });
+  it('should pass on a checkbox question with items and a limit', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q4',
+        kind: SurveyQuestionKind.CHECK,
+        questionTitle: 'Which of these do you use?',
+        isRequired: false,
+        items: [
+          {id: 'radio', text: 'Radio'},
+          {id: 'papers', text: 'Papers'},
+        ],
+        maxSelections: 1,
+      },
+    ];
+    expect(validateSurveyQuestions(questions)).toEqual({valid: true});
+  });
+
+  it('should pass on a single checkbox question with no items field', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q4',
+        kind: SurveyQuestionKind.CHECK,
+        questionTitle: 'Do you agree?',
+        isRequired: true,
+      },
+    ];
+    expect(validateSurveyQuestions(questions)).toEqual({valid: true});
+  });
+
+  it('should fail on a checkbox question with a zero selection limit', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q4',
+        kind: SurveyQuestionKind.CHECK,
+        questionTitle: 'Which of these do you use?',
+        isRequired: false,
+        items: [{id: 'radio', text: 'Radio'}],
+        maxSelections: 0,
+      },
+    ];
+    const res = validateSurveyQuestions(questions);
+    expect(res.valid).toBe(false);
+    if (!res.valid) {
+      expect(res.error).toContain('must be an integer greater than 0');
+    }
+  });
 });
