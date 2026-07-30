@@ -1288,5 +1288,89 @@ describe('API Experiment Creation Integration Tests', () => {
       const data = await response.json();
       expect(data.error).toContain('must have at least one item');
     });
+    it('should accept experiment creation with checkbox items and a limit', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-check-items',
+        questions: [
+          {
+            id: 'q-check-items',
+            kind: SurveyQuestionKind.CHECK,
+            questionTitle: 'Which of these do you use?',
+            isRequired: false,
+            items: [
+              {id: 'radio', text: 'Radio'},
+              {id: 'papers', text: 'Papers'},
+            ],
+            maxSelections: 1,
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Checkbox Items Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      createdExperimentIds.push(data.experiment.id);
+
+      const saved = await apiRequest(
+        'GET',
+        `/v1/experiments/${data.experiment.id}`,
+      );
+      const savedData = await saved.json();
+      const question = savedData.stageMap['survey-check-items'].questions[0];
+      expect(question.items).toHaveLength(2);
+      expect(question.maxSelections).toBe(1);
+    });
+
+    it('should accept a single checkbox question that carries no items', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-check-single',
+        questions: [
+          {
+            id: 'q-check-single',
+            kind: SurveyQuestionKind.CHECK,
+            questionTitle: 'Do you agree?',
+            isRequired: true,
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Single Checkbox Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      createdExperimentIds.push(data.experiment.id);
+    });
+
+    it('should reject a checkbox question with a zero selection limit', async () => {
+      const stage = createSurveyStage({
+        id: 'survey-check-limit',
+        questions: [
+          {
+            id: 'q-check-limit',
+            kind: SurveyQuestionKind.CHECK,
+            questionTitle: 'Which of these do you use?',
+            isRequired: false,
+            items: [{id: 'radio', text: 'Radio'}],
+            maxSelections: 0,
+          },
+        ],
+      });
+
+      const response = await apiRequest('POST', '/v1/experiments', {
+        name: 'Bad Checkbox Limit Experiment',
+        stages: JSON.parse(JSON.stringify([stage])),
+      });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toContain('Expected union value');
+    });
   });
 });

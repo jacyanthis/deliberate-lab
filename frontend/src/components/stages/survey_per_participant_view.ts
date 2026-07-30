@@ -20,6 +20,7 @@ import {
   AllocationItem,
   AllocationSurveyAnswer,
   AllocationSurveyQuestion,
+  CheckItem,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   MultipleChoiceDisplayType,
@@ -39,6 +40,8 @@ import {
   TextSurveyQuestion,
   formatAllocationValue,
   getAllocationTotal,
+  getCheckedItemIds,
+  getRemainingCheckSelections,
   isMultipleChoiceImageQuestion,
   isQuestionVisible,
   getVisibleSurveyQuestions,
@@ -328,6 +331,9 @@ export class SurveyView extends MobxLitElement {
     question: CheckSurveyQuestion,
     participant: ParticipantProfile,
   ) {
+    if (question.items?.length) {
+      return this.renderCheckItemsQuestion(question, participant);
+    }
     const isChecked = () => {
       if (!this.stage) return;
       // Get answer per participant
@@ -375,6 +381,76 @@ export class SurveyView extends MobxLitElement {
         </label>
       </div>
     `;
+  }
+
+  private renderCheckItemsQuestion(
+    question: CheckSurveyQuestion,
+    participant: ParticipantProfile,
+  ) {
+    const answer = this.getCheckAnswer(question, participant.publicId);
+    const checkedMap = answer?.checkedMap ?? {};
+    const remaining = getRemainingCheckSelections(question, answer);
+
+    const renderItem = (item: CheckItem) => {
+      const isChecked = checkedMap[item.id] === true;
+      const atLimit = remaining === 0 && !isChecked;
+
+      const handleCheck = () => {
+        if (!this.stage) return;
+        const updatedMap = {...checkedMap, [item.id]: !isChecked};
+        const checkAnswer: CheckSurveyAnswer = {
+          id: question.id,
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: Object.values(updatedMap).some((checked) => checked),
+          checkedMap: updatedMap,
+        };
+        this.participantAnswerService.updateSurveyPerParticipantAnswer(
+          this.stage.id,
+          checkAnswer,
+          participant.publicId,
+        );
+      };
+
+      return html`
+        <label class="checkbox-wrapper">
+          <md-checkbox
+            touch-target="wrapper"
+            aria-label=${item.text}
+            ?checked=${isChecked}
+            ?disabled=${this.participantService.disableStage || atLimit}
+            @click=${handleCheck}
+          >
+          </md-checkbox>
+          <div>${item.text}</div>
+        </label>
+      `;
+    };
+
+    return html`
+      <div class="question">
+        ${this.renderParticipant(participant)}
+        <div class="question-title">${question.questionTitle}</div>
+        <div class="checkbox-items">
+          ${(question.items ?? []).map(renderItem)}
+        </div>
+      </div>
+    `;
+  }
+
+  private getCheckAnswer(
+    question: CheckSurveyQuestion,
+    participantPublicId: string,
+  ) {
+    if (!this.stage) return undefined;
+    const answer = this.participantAnswerService.getSurveyPerParticipantAnswer(
+      this.stage.id,
+      question.id,
+      participantPublicId,
+    );
+    if (answer && answer.kind === SurveyQuestionKind.CHECK) {
+      return answer;
+    }
+    return undefined;
   }
 
   private renderTextQuestion(

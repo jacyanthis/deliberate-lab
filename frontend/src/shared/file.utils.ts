@@ -1104,6 +1104,25 @@ export function getSurveyStageCSVColumns(
         );
         break;
       case SurveyQuestionKind.CHECK:
+        if (question.items?.length) {
+          const checkedMap =
+            answer?.kind === SurveyQuestionKind.CHECK
+              ? (answer.checkedMap ?? {})
+              : null;
+          // Add a column for every checkbox item
+          question.items.forEach((item, index) => {
+            columns.push(
+              !participant
+                ? `Item ${index + 1} (${item.id}) - "${toCSV(
+                    question.questionTitle,
+                  )}" - Survey ${surveyStage.id}`
+                : checkedMap
+                  ? (checkedMap[item.id] === true).toString()
+                  : '',
+            );
+          });
+          break;
+        }
         const checkAnswer =
           answer?.kind === SurveyQuestionKind.CHECK
             ? answer?.isChecked.toString()
@@ -1225,6 +1244,25 @@ export function getSurveyPerParticipantStageCSVColumns(
           );
           break;
         case SurveyQuestionKind.CHECK:
+          if (question.items?.length) {
+            const checkedMap =
+              answer?.kind === SurveyQuestionKind.CHECK
+                ? (answer.checkedMap ?? {})
+                : null;
+            // Add a column for every checkbox item
+            question.items.forEach((item, index) => {
+              columns.push(
+                !participant
+                  ? `Item ${index + 1} (${item.id}) - "${toCSV(
+                      question.questionTitle,
+                    )}" - ${participantId} - Per-Participant Survey ${stage.id}`
+                  : checkedMap
+                    ? (checkedMap[item.id] === true).toString()
+                    : '',
+              );
+            });
+            break;
+          }
           const checkAnswer =
             answer?.kind === SurveyQuestionKind.CHECK
               ? answer?.isChecked.toString()

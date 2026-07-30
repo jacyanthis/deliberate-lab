@@ -33,6 +33,15 @@ export const TextSurveyQuestionData = Type.Object(
   {$id: 'TextSurveyQuestion', ...strict},
 );
 
+/** CheckItem input validation. */
+export const CheckItemData = Type.Object(
+  {
+    id: Type.String({minLength: 1}),
+    text: Type.String(),
+  },
+  {$id: 'CheckItem', ...strict},
+);
+
 /** CheckSurveyQuestion input validation. */
 export const CheckSurveyQuestionData = Type.Object(
   {
@@ -40,6 +49,10 @@ export const CheckSurveyQuestionData = Type.Object(
     kind: Type.Literal(SurveyQuestionKind.CHECK),
     questionTitle: Type.String(),
     isRequired: Type.Boolean(),
+    items: Type.Optional(Type.Array(CheckItemData)),
+    maxSelections: Type.Optional(
+      Type.Union([Type.Null(), Type.Integer({minimum: 1})]),
+    ),
     condition: Type.Optional(Type.Union([Type.Null(), ConditionSchema])),
   },
   {$id: 'CheckSurveyQuestion', ...strict},
@@ -182,6 +195,9 @@ export const CheckSurveyAnswerData = Type.Object(
     id: Type.String({minLength: 1}),
     kind: Type.Literal(SurveyQuestionKind.CHECK),
     isChecked: Type.Boolean(),
+    checkedMap: Type.Optional(
+      Type.Record(Type.String({minLength: 1}), Type.Boolean()),
+    ),
   },
   {$id: 'CheckSurveyAnswer', ...strict},
 );
@@ -321,6 +337,17 @@ export function validateSurveyQuestions(
           valid: false,
           error: `Scale question "${q.questionTitle}" step size (${step}) must divide max-min (${range}) exactly`,
         };
+      }
+    }
+    if (q.kind === SurveyQuestionKind.CHECK) {
+      const limit = q.maxSelections;
+      if (limit !== null && limit !== undefined) {
+        if (!Number.isInteger(limit) || limit <= 0) {
+          return {
+            valid: false,
+            error: `Checkbox question "${q.questionTitle}" maximum selections (${limit}) must be an integer greater than 0`,
+          };
+        }
       }
     }
     if (q.kind === SurveyQuestionKind.ALLOCATION) {
