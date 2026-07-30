@@ -10,6 +10,11 @@ import {
   createMultipleChoiceSurveyQuestion,
   createMultipleChoiceItem,
   createScaleSurveyQuestion,
+  createAllocationSurveyQuestion,
+  createAllocationItem,
+  ParticipantDownload,
+  StageKind,
+  SurveyQuestionKind,
 } from '@deliberation-lab/utils';
 
 describe('File utils', () => {
@@ -52,6 +57,48 @@ describe('File utils', () => {
     ].map(expect.stringMatching);
 
     expect(columns).toEqual(expectedColumns);
+  });
+
+  it('write allocation csv columns and values', () => {
+    const roads = createAllocationItem({text: 'Roads'});
+    const schools = createAllocationItem({text: 'Schools'});
+    const question = createAllocationSurveyQuestion({
+      questionTitle: 'Divide the budget.',
+      items: [roads, schools],
+      totalValue: 100,
+      stepSize: 5,
+      unitText: '%',
+    });
+    const config = createSurveyStage({questions: [question]});
+
+    const headers = file_utils.getSurveyStageCSVColumns(config, null);
+    expect(headers).toEqual(
+      [
+        /Item 1 \([-a-z0-9]+\) - "Divide the budget." - Survey [-a-z0-9]+/,
+        /Item 2 \([-a-z0-9]+\) - "Divide the budget." - Survey [-a-z0-9]+/,
+      ].map(expect.stringMatching),
+    );
+
+    const participant = {
+      answerMap: {
+        [config.id]: {
+          id: config.id,
+          kind: StageKind.SURVEY,
+          answerMap: {
+            [question.id]: {
+              id: question.id,
+              kind: SurveyQuestionKind.ALLOCATION,
+              allocationMap: {[roads.id]: 60, [schools.id]: 40},
+            },
+          },
+        },
+      },
+    } as unknown as ParticipantDownload;
+
+    expect(file_utils.getSurveyStageCSVColumns(config, participant)).toEqual([
+      '60',
+      '40',
+    ]);
   });
 });
 

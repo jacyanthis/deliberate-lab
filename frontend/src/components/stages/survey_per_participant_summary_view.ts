@@ -9,6 +9,8 @@ import {CohortService} from '../../services/cohort.service';
 import {ParticipantService} from '../../services/participant.service';
 import {ParticipantAnswerService} from '../../services/participant.answer';
 import {
+  AllocationSurveyAnswer,
+  AllocationSurveyQuestion,
   CheckSurveyAnswer,
   MultipleChoiceSurveyAnswer,
   MultipleChoiceSurveyQuestion,
@@ -171,6 +173,17 @@ export class SurveySummary extends MobxLitElement {
 
       case SurveyQuestionKind.SCALE:
         answerText = `${(answer as ScaleSurveyAnswer).value}`;
+        break;
+
+      case SurveyQuestionKind.ALLOCATION:
+        const allocationQuestion = question as AllocationSurveyQuestion;
+        const allocationAnswer = answer as AllocationSurveyAnswer;
+        answerText = allocationQuestion.items
+          .map(
+            (item) =>
+              `${item.text}: ${allocationAnswer.allocationMap[item.id] ?? 0}`,
+          )
+          .join(', ');
         break;
 
       default:

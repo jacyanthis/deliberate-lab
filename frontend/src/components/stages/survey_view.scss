@@ -142,6 +142,26 @@
   }
 }
 
+.allocation-item {
+  @include common.flex-column;
+  gap: common.$spacing-small;
+  max-width: 500px;
+
+  .allocation-item-text {
+    @include typescale.label-medium;
+    color: var(--md-sys-color-on-surface);
+  }
+
+  md-slider {
+    width: 100%;
+  }
+}
+
+.allocation-total {
+  @include typescale.label-medium;
+  font-weight: 500;
+}
+
 .slider-selected-value {
   @include common.flex-row-align-center;
   @include typescale.label-medium;
