@@ -20,11 +20,33 @@ import {
   MultipleChoiceSurveyAnswer,
   ScaleSurveyQuestion,
   ScaleSurveyAnswer,
+  AllocationSurveyQuestion,
+  AllocationSurveyAnswer,
+  formatAllocationValue,
   createSurveyStageParticipantAnswer,
   createSurveyPerParticipantStageParticipantAnswer,
 } from './survey_stage';
 
 /** Prompt constants and utils for interacting with survey stage. */
+
+/** Helper function to format an allocation answer, e.g. "Roads: 20%, Schools: 30%" */
+function formatAllocationText(
+  question: AllocationSurveyQuestion,
+  answer: AllocationSurveyAnswer | undefined,
+): string {
+  if (!answer) {
+    return 'none';
+  }
+  return question.items
+    .map(
+      (item) =>
+        `${item.text}: ${formatAllocationValue(
+          answer.allocationMap[item.id] ?? 0,
+          question.unitText,
+        )}`,
+    )
+    .join(', ');
+}
 
 /** Helper function to format scale question text */
 function formatScaleText(scaleQuestion: ScaleSurveyQuestion): string {
@@ -84,6 +106,12 @@ function getSurveyStageQuestion(
     case SurveyQuestionKind.SCALE:
       const scaleAnswer = `\nAnswer: ${answer?.kind === SurveyQuestionKind.SCALE ? answer.value : 'none'}`;
       return `Question: ${question.questionTitle}${scaleAnswer}`;
+    case SurveyQuestionKind.ALLOCATION:
+      const allocationText = formatAllocationText(
+        question,
+        answer?.kind === SurveyQuestionKind.ALLOCATION ? answer : undefined,
+      );
+      return `Question: ${question.questionTitle}\nAnswer: ${allocationText}`;
     default:
       return '';
   }
@@ -107,6 +135,16 @@ export function createAgentParticipantSurveyQuestionPrompt(
       return `${question.questionTitle}\n${options}\nRespond with the ID of the choice you'd like to pick:`;
     case SurveyQuestionKind.SCALE:
       return `${question.questionTitle}\nRespond with a number between ${question.lowerValue} and ${question.upperValue}, where ${question.lowerValue} is ${question.lowerText} and ${question.upperValue} is ${question.upperText}.`;
+    case SurveyQuestionKind.ALLOCATION:
+      const items = question.items
+        .map((item) => `- ${item.id}: ${item.text}`)
+        .join('\n');
+      const step = question.stepSize ?? 1;
+      const allocationTotal = formatAllocationValue(
+        question.totalValue,
+        question.unitText,
+      );
+      return `${question.questionTitle}\n${items}\nRespond with a number for each item, in steps of ${step}, so that the numbers add up to exactly ${allocationTotal}.`;
     default:
       return '';
   }
@@ -135,6 +173,23 @@ function getSchemaForQuestion(
       return {
         type: StructuredOutputDataType.INTEGER,
         description: `${description} (from ${question.lowerValue} to ${question.upperValue})`,
+      };
+    case SurveyQuestionKind.ALLOCATION:
+      // Since the total isn't enforced by the schema type,
+      // include it in the description
+      return {
+        type: StructuredOutputDataType.OBJECT,
+        description: `${description} (the numbers must add up to exactly ${formatAllocationValue(
+          question.totalValue,
+          question.unitText,
+        )})`,
+        properties: question.items.map((item) => ({
+          name: item.id,
+          schema: {
+            type: StructuredOutputDataType.INTEGER,
+            description: item.text,
+          },
+        })),
       };
   }
 }
@@ -224,6 +279,20 @@ function parseAnswerForQuestion(
         id: question.id,
         kind: question.kind,
         value: rawAnswer as number,
+      };
+    case SurveyQuestionKind.ALLOCATION:
+      const rawMap = rawAnswer as Record<string, unknown>;
+      const allocationMap: Record<string, number> = {};
+      for (const item of question.items) {
+        const value = Number(rawMap[item.id]);
+        if (Number.isFinite(value)) {
+          allocationMap[item.id] = value;
+        }
+      }
+      return {
+        id: question.id,
+        kind: question.kind,
+        allocationMap,
       };
   }
   return undefined;
@@ -317,6 +386,14 @@ function getSurveyQuestionTextForPrompt(question: SurveyQuestion) {
     case SurveyQuestionKind.SCALE:
       const scaleQ = question as ScaleSurveyQuestion;
       questionText += ` (${formatScaleText(scaleQ)})`;
+      break;
+    case SurveyQuestionKind.ALLOCATION:
+      const allocationQ = question as AllocationSurveyQuestion;
+      const itemText = allocationQ.items.map((item) => item.text).join(', ');
+      questionText += ` (Divide ${formatAllocationValue(
+        allocationQ.totalValue,
+        allocationQ.unitText,
+      )} across: ${itemText})`;
       break;
   }
 
@@ -499,6 +576,14 @@ function formatSingleAnswer(
       const scaleAnswer = answer as ScaleSurveyAnswer;
       const scaleQuestion = question as ScaleSurveyQuestion;
       return `${scaleAnswer.value} (${formatScaleText(scaleQuestion)})`;
+
+    case SurveyQuestionKind.ALLOCATION:
+      const allocationAnswer = answer as AllocationSurveyAnswer;
+      const allocationQuestion = question as AllocationSurveyQuestion;
+      return `${formatAllocationText(allocationQuestion, allocationAnswer)} (out of ${formatAllocationValue(
+        allocationQuestion.totalValue,
+        allocationQuestion.unitText,
+      )})`;
 
     default:
       return '(unknown answer type)';

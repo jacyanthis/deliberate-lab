@@ -96,12 +96,39 @@ export const ScaleSurveyQuestionData = Type.Object(
   {$id: 'ScaleSurveyQuestion', ...strict},
 );
 
+/** AllocationItem input validation. */
+export const AllocationItemData = Type.Object(
+  {
+    id: Type.String({minLength: 1}),
+    text: Type.String(),
+  },
+  {$id: 'AllocationItem', ...strict},
+);
+
+/** AllocationSurveyQuestion input validation. */
+export const AllocationSurveyQuestionData = Type.Object(
+  {
+    id: Type.String({minLength: 1}),
+    kind: Type.Literal(SurveyQuestionKind.ALLOCATION),
+    questionTitle: Type.String(),
+    items: Type.Array(AllocationItemData),
+    totalValue: Type.Integer({minimum: 1}),
+    stepSize: Type.Optional(
+      Type.Union([Type.Null(), Type.Integer({minimum: 1})]),
+    ),
+    unitText: Type.Optional(Type.Union([Type.Null(), Type.String()])),
+    condition: Type.Optional(Type.Union([Type.Null(), ConditionSchema])),
+  },
+  {$id: 'AllocationSurveyQuestion', ...strict},
+);
+
 /** SurveyQuestion input validation. */
 export const SurveyQuestionData = Type.Union([
   TextSurveyQuestionData,
   CheckSurveyQuestionData,
   MultipleChoiceSurveyQuestionData,
   ScaleSurveyQuestionData,
+  AllocationSurveyQuestionData,
 ]);
 
 /** SurveyStageConfig input validation. */
@@ -179,12 +206,23 @@ export const ScaleSurveyAnswerData = Type.Object(
   {$id: 'ScaleSurveyAnswer', ...strict},
 );
 
+/** AllocationSurveyAnswer input validation. */
+export const AllocationSurveyAnswerData = Type.Object(
+  {
+    id: Type.String({minLength: 1}),
+    kind: Type.Literal(SurveyQuestionKind.ALLOCATION),
+    allocationMap: Type.Record(Type.String({minLength: 1}), Type.Number()),
+  },
+  {$id: 'AllocationSurveyAnswer', ...strict},
+);
+
 /** SurveyAnswer input validation. */
 export const SurveyAnswerData = Type.Union([
   TextSurveyAnswerData,
   CheckSurveyAnswerData,
   MultipleChoiceSurveyAnswerData,
   ScaleSurveyAnswerData,
+  AllocationSurveyAnswerData,
 ]);
 
 /** SurveyStageParticipantAnswer input validation. */
@@ -282,6 +320,33 @@ export function validateSurveyQuestions(
         return {
           valid: false,
           error: `Scale question "${q.questionTitle}" step size (${step}) must divide max-min (${range}) exactly`,
+        };
+      }
+    }
+    if (q.kind === SurveyQuestionKind.ALLOCATION) {
+      if (!q.items || q.items.length === 0) {
+        return {
+          valid: false,
+          error: `Allocation question "${q.questionTitle}" must have at least one item`,
+        };
+      }
+      const step = q.stepSize ?? 1;
+      if (!Number.isInteger(q.totalValue) || q.totalValue <= 0) {
+        return {
+          valid: false,
+          error: `Allocation question "${q.questionTitle}" total value (${q.totalValue}) must be an integer greater than 0`,
+        };
+      }
+      if (!Number.isInteger(step) || step <= 0) {
+        return {
+          valid: false,
+          error: `Allocation question "${q.questionTitle}" step size (${step}) must be an integer greater than 0`,
+        };
+      }
+      if (q.totalValue % step !== 0) {
+        return {
+          valid: false,
+          error: `Allocation question "${q.questionTitle}" step size (${step}) must divide the total value (${q.totalValue}) exactly`,
         };
       }
     }
