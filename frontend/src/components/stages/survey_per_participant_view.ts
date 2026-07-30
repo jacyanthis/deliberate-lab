@@ -17,6 +17,9 @@ import {customElement, property} from 'lit/decorators.js';
 import {classMap} from 'lit/directives/class-map.js';
 
 import {
+  AllocationItem,
+  AllocationSurveyAnswer,
+  AllocationSurveyQuestion,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   MultipleChoiceDisplayType,
@@ -34,6 +37,8 @@ import {
   SurveyStageParticipantAnswer,
   TextSurveyAnswer,
   TextSurveyQuestion,
+  formatAllocationValue,
+  getAllocationTotal,
   isMultipleChoiceImageQuestion,
   isQuestionVisible,
   getVisibleSurveyQuestions,
@@ -187,9 +192,108 @@ export class SurveyView extends MobxLitElement {
         return this.renderScaleQuestion(question, participant);
       case SurveyQuestionKind.TEXT:
         return this.renderTextQuestion(question, participant);
+      case SurveyQuestionKind.ALLOCATION:
+        return this.renderAllocationQuestion(question, participant);
       default:
         return nothing;
     }
+  }
+
+  private renderAllocationQuestion(
+    question: AllocationSurveyQuestion,
+    participant: ParticipantProfile,
+  ) {
+    const answer = this.getAllocationAnswer(question, participant.publicId);
+    const allocated = getAllocationTotal(question, answer);
+    const isExact = allocated === question.totalValue;
+
+    return html`
+      <div class="question">
+        <div class="question-title">${question.questionTitle}</div>
+        ${this.renderParticipant(participant)}
+        ${question.items.map((item) =>
+          this.renderAllocationItem(question, item, participant, allocated),
+        )}
+        ${isExact
+          ? nothing
+          : html`<div class="allocation-total required">
+              Current total is
+              ${formatAllocationValue(allocated, question.unitText)}. Please
+              allocate
+              ${formatAllocationValue(question.totalValue, question.unitText)}
+              to continue.
+            </div>`}
+      </div>
+    `;
+  }
+
+  private renderAllocationItem(
+    question: AllocationSurveyQuestion,
+    item: AllocationItem,
+    participant: ParticipantProfile,
+    allocated: number,
+  ) {
+    const answer = this.getAllocationAnswer(question, participant.publicId);
+    const value = answer?.allocationMap[item.id] ?? 0;
+    const stepSize = question.stepSize ?? 1;
+    // The amount this item can hold before the question runs out of budget
+    const cap = value + (question.totalValue - allocated);
+
+    const handleSliderChange = (e: Event) => {
+      if (!this.stage) return;
+      const slider = e.target as HTMLInputElement;
+      const capped = Math.min(Number(slider.value), cap);
+      if (capped !== Number(slider.value)) {
+        // Keep the slider in step with the stored value when it hits the cap
+        slider.value = capped.toString();
+      }
+      const allocationAnswer: AllocationSurveyAnswer = {
+        id: question.id,
+        kind: SurveyQuestionKind.ALLOCATION,
+        allocationMap: {...(answer?.allocationMap ?? {}), [item.id]: capped},
+      };
+      this.participantAnswerService.updateSurveyPerParticipantAnswer(
+        this.stage.id,
+        allocationAnswer,
+        participant.publicId,
+      );
+    };
+
+    const id = `${question.id}-${participant.publicId}-${item.id}`;
+
+    return html`
+      <div class="allocation-item">
+        <label class="allocation-item-text" for=${id}>${item.text}</label>
+        <md-slider
+          id=${id}
+          min="0"
+          max=${question.totalValue}
+          step=${stepSize}
+          value=${value}
+          ticks
+          labeled
+          ?disabled=${this.participantService.disableStage}
+          @input=${handleSliderChange}
+        >
+        </md-slider>
+      </div>
+    `;
+  }
+
+  private getAllocationAnswer(
+    question: AllocationSurveyQuestion,
+    participantPublicId: string,
+  ) {
+    if (!this.stage) return undefined;
+    const answer = this.participantAnswerService.getSurveyPerParticipantAnswer(
+      this.stage.id,
+      question.id,
+      participantPublicId,
+    );
+    if (answer && answer.kind === SurveyQuestionKind.ALLOCATION) {
+      return answer;
+    }
+    return undefined;
   }
 
   private isQuestionVisibleForParticipant(

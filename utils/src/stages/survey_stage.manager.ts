@@ -5,6 +5,7 @@ import {createDefaultParticipantPrompt} from '../structured_prompt';
 import {VariableDefinition} from '../variables';
 import {resolveTemplateVariables} from '../variables.template';
 import {
+  AllocationSurveyQuestion,
   MultipleChoiceSurveyQuestion,
   ScaleSurveyQuestion,
   SurveyQuestion,
@@ -51,6 +52,20 @@ export function resolveSurveyQuestionVariables(
             ...option,
             text: resolveTemplateVariables(
               option.text,
+              variableDefinitions,
+              valueMap,
+            ),
+          })),
+        };
+      }
+      case SurveyQuestionKind.ALLOCATION: {
+        const allocationQuestion = baseResolved as AllocationSurveyQuestion;
+        return {
+          ...allocationQuestion,
+          items: allocationQuestion.items.map((item) => ({
+            ...item,
+            text: resolveTemplateVariables(
+              item.text,
               variableDefinitions,
               valueMap,
             ),

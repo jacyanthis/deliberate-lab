@@ -614,6 +614,15 @@ class MultipleChoiceDisplayType(StrEnum):
     dropdown = "dropdown"
 
 
+class AllocationItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    text: str
+
+
 class TOSStageConfig(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1274,6 +1283,7 @@ class SurveyPerParticipantStageConfig(BaseModel):
         | CheckSurveyQuestion
         | MultipleChoiceSurveyQuestion
         | ScaleSurveyQuestion
+        | AllocationSurveyQuestion
     ]
     enableSelfSurvey: bool
 
@@ -1346,6 +1356,21 @@ class ScaleSurveyQuestion(BaseModel):
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
+class AllocationSurveyQuestion(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    kind: Literal["allocation"] = "allocation"
+    questionTitle: str
+    items: list[AllocationItem]
+    totalValue: Annotated[int, Field(ge=1)]
+    stepSize: Annotated[int | None, Field(ge=1)] = None
+    unitText: str | None = None
+    condition: ComparisonCondition | ConditionGroup | None = None
+
+
 class SurveyStageConfig(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1362,6 +1387,7 @@ class SurveyStageConfig(BaseModel):
         | CheckSurveyQuestion
         | MultipleChoiceSurveyQuestion
         | ScaleSurveyQuestion
+        | AllocationSurveyQuestion
     ]
 
 

@@ -45,6 +45,7 @@ export enum SurveyQuestionKind {
   CHECK = 'check', // checkbox
   MULTIPLE_CHOICE = 'mc', // multiple choice
   SCALE = 'scale', // e.g., "on a scale of 1 to 7"
+  ALLOCATION = 'allocation', // divide a fixed total across items
 }
 
 /** Display type for multiple choice questions. */
@@ -96,11 +97,25 @@ export interface ScaleSurveyQuestion extends BaseSurveyQuestion {
   stepSize: number; // Step size for the scale (defaults to 1)
 }
 
+export interface AllocationSurveyQuestion extends BaseSurveyQuestion {
+  kind: SurveyQuestionKind.ALLOCATION;
+  items: AllocationItem[];
+  totalValue: number; // Amount that participants divide across the items
+  stepSize: number; // Step size for each item slider (defaults to 1)
+  unitText: string; // Text shown after each number, e.g. "%"
+}
+
+export interface AllocationItem {
+  id: string;
+  text: string;
+}
+
 export type SurveyQuestion =
   | TextSurveyQuestion
   | CheckSurveyQuestion
   | MultipleChoiceSurveyQuestion
-  | ScaleSurveyQuestion;
+  | ScaleSurveyQuestion
+  | AllocationSurveyQuestion;
 
 /**
  * SurveyStageParticipantAnswer.
@@ -146,11 +161,17 @@ export interface ScaleSurveyAnswer extends BaseSurveyAnswer {
   value: number; // number value selected
 }
 
+export interface AllocationSurveyAnswer extends BaseSurveyAnswer {
+  kind: SurveyQuestionKind.ALLOCATION;
+  allocationMap: Record<string, number>; // map of item ID to allocated amount
+}
+
 export type SurveyAnswer =
   | TextSurveyAnswer
   | CheckSurveyAnswer
   | MultipleChoiceSurveyAnswer
-  | ScaleSurveyAnswer;
+  | ScaleSurveyAnswer
+  | AllocationSurveyAnswer;
 
 /**
  * SurveyStagePublicData.
@@ -270,6 +291,32 @@ export function createScaleSurveyQuestion(
   };
 }
 
+/** Create allocation question. */
+export function createAllocationSurveyQuestion(
+  config: Partial<AllocationSurveyQuestion> = {},
+): AllocationSurveyQuestion {
+  return {
+    id: config.id ?? generateId(),
+    kind: SurveyQuestionKind.ALLOCATION,
+    questionTitle: config.questionTitle ?? '',
+    items: config.items ?? [],
+    totalValue: config.totalValue ?? 100,
+    stepSize: config.stepSize ?? 1,
+    unitText: config.unitText ?? '',
+    condition: config.condition,
+  };
+}
+
+/** Create allocation item. */
+export function createAllocationItem(
+  config: Partial<AllocationItem> = {},
+): AllocationItem {
+  return {
+    id: config.id ?? generateId(),
+    text: config.text ?? '',
+  };
+}
+
 /** Create survey stage participant answer. */
 export function createSurveyStageParticipantAnswer(
   config: Partial<SurveyStageParticipantAnswer> = {},
@@ -302,6 +349,27 @@ export function createSurveyStagePublicData(
     kind: StageKind.SURVEY,
     participantAnswerMap: {},
   };
+}
+
+/** Returns an allocated amount with its unit, e.g. "20 points" or "20%".
+ *  Questions with no unit text of their own are shown as a percentage.
+ */
+export function formatAllocationValue(value: number, unitText: string) {
+  return unitText ? `${value} ${unitText}` : `${value}%`;
+}
+
+/** Returns the amount allocated across a question's items. */
+export function getAllocationTotal(
+  question: AllocationSurveyQuestion,
+  answer: AllocationSurveyAnswer | undefined,
+) {
+  if (!answer) {
+    return 0;
+  }
+  return question.items.reduce(
+    (total, item) => total + (answer.allocationMap[item.id] ?? 0),
+    0,
+  );
 }
 
 /** Returns true if any multiple choice options contain an image. */
@@ -468,6 +536,16 @@ export function isSurveyAnswerComplete(
         }
       }
       return true;
+
+    case SurveyQuestionKind.ALLOCATION:
+      // The full total must be allocated across the question's items
+      if (!question || question.kind !== SurveyQuestionKind.ALLOCATION) {
+        return true;
+      }
+      return (
+        getAllocationTotal(question, answer as AllocationSurveyAnswer) ===
+        question.totalValue
+      );
     default:
       // All other answer types are complete as long as they exist
       return true;
