@@ -99,6 +99,34 @@ describe('File utils', () => {
       '60',
       '40',
     ]);
+
+    // A slider left alone on an answered question is a real zero
+    const partial = {
+      answerMap: {
+        [config.id]: {
+          id: config.id,
+          kind: StageKind.SURVEY,
+          answerMap: {
+            [question.id]: {
+              id: question.id,
+              kind: SurveyQuestionKind.ALLOCATION,
+              allocationMap: {[roads.id]: 100},
+            },
+          },
+        },
+      },
+    } as unknown as ParticipantDownload;
+    expect(file_utils.getSurveyStageCSVColumns(config, partial)).toEqual([
+      '100',
+      '0',
+    ]);
+
+    // A question with no answer at all stays blank
+    const noAnswer = {answerMap: {}} as unknown as ParticipantDownload;
+    expect(file_utils.getSurveyStageCSVColumns(config, noAnswer)).toEqual([
+      '',
+      '',
+    ]);
   });
 });
 
