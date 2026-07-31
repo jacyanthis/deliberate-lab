@@ -45,7 +45,10 @@ import {
 } from '@deliberation-lab/utils';
 
 import {unsafeHTML} from 'lit/directives/unsafe-html.js';
-import {convertMarkdownToHTML} from '../../shared/utils';
+import {
+  convertMarkdownToHTML,
+  pinAllocationSliderLabels,
+} from '../../shared/utils';
 import {core} from '../../core/core';
 import {ParticipantService} from '../../services/participant.service';
 import {ParticipantAnswerService} from '../../services/participant.answer';
@@ -64,37 +67,9 @@ export class SurveyView extends MobxLitElement {
 
   @property() stage: SurveyStageConfig | undefined = undefined;
 
-  // Allocation sliders already styled to keep their value bubble up
-  private readonly pinnedSliders = new WeakSet<ShadowRoot>();
-
   override updated() {
-    // An allocation slider shows its amount at all times, while the slider
-    // itself only raises the bubble when it has focus or the pointer is on it.
-    // That rule sits inside the slider, so the override has to go there too.
-    this.renderRoot
-      .querySelectorAll('.allocation-item md-slider')
-      .forEach((slider) => this.pinSliderLabel(slider));
-  }
-
-  private pinSliderLabel(slider: Element) {
-    const pin = () => {
-      const root = slider.shadowRoot;
-      if (!root || this.pinnedSliders.has(root)) return;
-      // Browsers without constructed stylesheets keep the bubble on hover only
-      if (!('adoptedStyleSheets' in root)) return;
-      const sheet = new CSSStyleSheet();
-      sheet.replaceSync('.label { transform: scale(1); }');
-      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
-      this.pinnedSliders.add(root);
-    };
-    // The slider renders its own contents after this, so wait for it
-    const ready = (slider as Element & {updateComplete?: Promise<unknown>})
-      .updateComplete;
-    if (ready) {
-      ready.then(pin);
-    } else {
-      pin();
-    }
+    // An allocation slider shows its amount at all times
+    pinAllocationSliderLabels(this.renderRoot);
   }
 
   override render() {
@@ -705,6 +680,7 @@ export class SurveyView extends MobxLitElement {
           max=${question.totalValue}
           step=${stepSize}
           value=${value}
+          value-label=${formatAllocationValue(value, question.unitText)}
           ticks
           labeled
           ?disabled=${this.participantService.disableStage}
