@@ -156,6 +156,8 @@ export function createExperimentConfig(
     variableMap: config.variableMap ?? {},
     cohortDefinitions: config.cohortDefinitions,
     spawnedAgentModelSettings: config.spawnedAgentModelSettings ?? null,
+    timeoutMessageLimit: config.timeoutMessageLimit,
+    useNeutralTimeoutResponses: config.useNeutralTimeoutResponses,
   };
 }
 
