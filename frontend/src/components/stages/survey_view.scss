@@ -154,8 +154,9 @@
 
   md-slider {
     width: 100%;
-    // Room above the slider for the value bubble, which is always shown
-    margin-top: common.$spacing-xxl;
+    // Room above the slider for the value bubble, which is always shown, plus
+    // a gap between the bubble and the item it belongs to
+    margin-top: common.$spacing-xxl + common.$spacing-large;
   }
 }
 
