@@ -1195,7 +1195,7 @@ export function getSurveyStageCSVColumns(
         const allocationMap =
           answer?.kind === SurveyQuestionKind.ALLOCATION
             ? answer.allocationMap
-            : {};
+            : null;
         // Add a column for every allocation item
         question.items.forEach((item, index) => {
           columns.push(
@@ -1203,7 +1203,9 @@ export function getSurveyStageCSVColumns(
               ? `Item ${index + 1} (${item.id}) - "${toCSV(
                   question.questionTitle,
                 )}" - Survey ${surveyStage.id}`
-              : (allocationMap[item.id]?.toString() ?? ''),
+              : allocationMap
+                ? (allocationMap[item.id] ?? 0).toString()
+                : '',
           );
         });
         break;
@@ -1335,7 +1337,7 @@ export function getSurveyPerParticipantStageCSVColumns(
           const allocationMap =
             answer?.kind === SurveyQuestionKind.ALLOCATION
               ? answer.allocationMap
-              : {};
+              : null;
           // Add a column for every allocation item
           question.items.forEach((item, index) => {
             columns.push(
@@ -1343,7 +1345,9 @@ export function getSurveyPerParticipantStageCSVColumns(
                 ? `Item ${index + 1} (${item.id}) - "${toCSV(
                     question.questionTitle,
                   )}" - ${participantId} - Per-Participant Survey ${stage.id}`
-                : (allocationMap[item.id]?.toString() ?? ''),
+                : allocationMap
+                  ? (allocationMap[item.id] ?? 0).toString()
+                  : '',
             );
           });
           break;
