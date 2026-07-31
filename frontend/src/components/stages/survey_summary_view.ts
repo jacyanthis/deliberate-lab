@@ -32,7 +32,10 @@ import {
 } from '@deliberation-lab/utils';
 
 import {unsafeHTML} from 'lit/directives/unsafe-html.js';
-import {convertMarkdownToHTML} from '../../shared/utils';
+import {
+  convertMarkdownToHTML,
+  pinAllocationSliderLabels,
+} from '../../shared/utils';
 import {core} from '../../core/core';
 import {ParticipantService} from '../../services/participant.service';
 import {ParticipantAnswerService} from '../../services/participant.answer';
@@ -50,6 +53,11 @@ export class SurveyView extends MobxLitElement {
   );
 
   @property() stage: SurveyStageConfig | undefined = undefined;
+
+  override updated() {
+    // An allocation slider shows its amount at all times
+    pinAllocationSliderLabels(this.renderRoot);
+  }
 
   override render() {
     if (!this.stage) {
@@ -116,6 +124,7 @@ export class SurveyView extends MobxLitElement {
                 max=${question.totalValue}
                 step=${stepSize}
                 value=${value}
+                value-label=${formatAllocationValue(value, question.unitText)}
                 ticks
                 labeled
                 disabled
