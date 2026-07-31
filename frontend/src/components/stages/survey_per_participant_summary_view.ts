@@ -11,6 +11,7 @@ import {ParticipantAnswerService} from '../../services/participant.answer';
 import {
   AllocationSurveyAnswer,
   AllocationSurveyQuestion,
+  formatAllocationValue,
   CheckSurveyAnswer,
   MultipleChoiceSurveyAnswer,
   MultipleChoiceSurveyQuestion,
@@ -181,7 +182,10 @@ export class SurveySummary extends MobxLitElement {
         answerText = allocationQuestion.items
           .map(
             (item) =>
-              `${item.text}: ${allocationAnswer.allocationMap[item.id] ?? 0}`,
+              `${item.text}: ${formatAllocationValue(
+                allocationAnswer.allocationMap[item.id] ?? 0,
+                allocationQuestion.unitText,
+              )}`,
           )
           .join(', ');
         break;
