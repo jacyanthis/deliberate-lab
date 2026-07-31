@@ -12,7 +12,7 @@ import '@material/web/textfield/outlined-text-field.js';
 
 import {MobxLitElement} from '@adobe/lit-mobx';
 import {CSSResultGroup, html, nothing} from 'lit';
-import {customElement, property, state} from 'lit/decorators.js';
+import {customElement, property} from 'lit/decorators.js';
 import {classMap} from 'lit/directives/class-map.js';
 
 import {
@@ -60,9 +60,6 @@ export class SurveyView extends MobxLitElement {
   );
 
   @property() stage: SurveyStageConfig | undefined = undefined;
-
-  // Question whose sliders are full, so the participant just tried to raise one
-  @state() private fullAllocationId: string | null = null;
 
   override render() {
     if (!this.stage) {
@@ -526,7 +523,6 @@ export class SurveyView extends MobxLitElement {
     const isExact = allocated === question.totalValue;
 
     const titleClasses = classMap({required: !isExact});
-    const isFull = this.fullAllocationId === question.id;
 
     return html`
       <div class="question">
@@ -537,7 +533,11 @@ export class SurveyView extends MobxLitElement {
           this.renderAllocationItem(question, item, allocated),
         )}
         ${isExact
-          ? nothing
+          ? html`<div class="allocation-total">
+              The current total is
+              ${formatAllocationValue(question.totalValue, question.unitText)}.
+              You can reduce the amount in one slider to increase it in another.
+            </div>`
           : html`<div class="allocation-total required">
               The current total is
               ${formatAllocationValue(allocated, question.unitText)}. Please
@@ -545,13 +545,6 @@ export class SurveyView extends MobxLitElement {
               ${formatAllocationValue(question.totalValue, question.unitText)}
               to continue.
             </div>`}
-        ${isFull
-          ? html`<div class="allocation-total required">
-              The current total is
-              ${formatAllocationValue(question.totalValue, question.unitText)}.
-              You can decrease another amount to increase this one.
-            </div>`
-          : nothing}
       </div>
     `;
   }
@@ -574,10 +567,6 @@ export class SurveyView extends MobxLitElement {
       if (capped !== Number(slider.value)) {
         // Keep the slider in step with the stored value when it hits the cap
         slider.value = capped.toString();
-        // Say why the slider stopped moving, since the total is already full
-        this.fullAllocationId = question.id;
-      } else {
-        this.fullAllocationId = null;
       }
       const allocationAnswer: AllocationSurveyAnswer = {
         id: question.id,
