@@ -64,6 +64,39 @@ export class SurveyView extends MobxLitElement {
 
   @property() stage: SurveyStageConfig | undefined = undefined;
 
+  // Allocation sliders already styled to keep their value bubble up
+  private readonly pinnedSliders = new WeakSet<ShadowRoot>();
+
+  override updated() {
+    // An allocation slider shows its amount at all times, while the slider
+    // itself only raises the bubble when it has focus or the pointer is on it.
+    // That rule sits inside the slider, so the override has to go there too.
+    this.renderRoot
+      .querySelectorAll('.allocation-item md-slider')
+      .forEach((slider) => this.pinSliderLabel(slider));
+  }
+
+  private pinSliderLabel(slider: Element) {
+    const pin = () => {
+      const root = slider.shadowRoot;
+      if (!root || this.pinnedSliders.has(root)) return;
+      // Browsers without constructed stylesheets keep the bubble on hover only
+      if (!('adoptedStyleSheets' in root)) return;
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync('.label { transform: scale(1); }');
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+      this.pinnedSliders.add(root);
+    };
+    // The slider renders its own contents after this, so wait for it
+    const ready = (slider as Element & {updateComplete?: Promise<unknown>})
+      .updateComplete;
+    if (ready) {
+      ready.then(pin);
+    } else {
+      pin();
+    }
+  }
+
   override render() {
     if (!this.stage) {
       return nothing;
@@ -662,9 +695,6 @@ export class SurveyView extends MobxLitElement {
         <label class="allocation-item-text" for=${id}>
           ${unsafeHTML(convertMarkdownToHTML(item.text))}
         </label>
-        <div class="allocation-item-value">
-          Current: ${formatAllocationValue(value, question.unitText)}
-        </div>
         <md-slider
           id=${id}
           min="0"
