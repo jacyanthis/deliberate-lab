@@ -216,9 +216,9 @@ export class SurveyView extends MobxLitElement {
         ${isExact
           ? nothing
           : html`<div class="allocation-total required">
-              Current total is
+              The current total is
               ${formatAllocationValue(allocated, question.unitText)}. Please
-              allocate
+              distribute
               ${formatAllocationValue(question.totalValue, question.unitText)}
               to continue.
             </div>`}
@@ -263,6 +263,9 @@ export class SurveyView extends MobxLitElement {
     return html`
       <div class="allocation-item">
         <label class="allocation-item-text" for=${id}>${item.text}</label>
+        <div class="allocation-item-value">
+          Current: ${formatAllocationValue(value, question.unitText)}
+        </div>
         <md-slider
           id=${id}
           min="0"
