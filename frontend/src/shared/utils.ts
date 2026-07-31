@@ -106,3 +106,38 @@ export function getHashBasedColor(hashString = ''): string {
 
   return COLORS[index];
 }
+
+/** Sliders already styled to keep their value bubble up. */
+const pinnedSliders = new WeakSet<ShadowRoot>();
+
+/**
+ * Keep the value bubble on every allocation slider in the given root visible.
+ * A slider only raises its bubble while it has focus or the pointer is on it,
+ * and that rule lives in the slider's own shadow root, so the override goes
+ * there too. Call from updated(), since each slider renders after its host.
+ */
+export function pinAllocationSliderLabels(
+  renderRoot: DocumentFragment | HTMLElement,
+) {
+  renderRoot
+    .querySelectorAll('.allocation-item md-slider')
+    .forEach((slider) => {
+      const pin = () => {
+        const root = slider.shadowRoot;
+        if (!root || pinnedSliders.has(root)) return;
+        // Browsers without constructed stylesheets keep the bubble on hover
+        if (!('adoptedStyleSheets' in root)) return;
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync('.label { transform: scale(1); }');
+        root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+        pinnedSliders.add(root);
+      };
+      const ready = (slider as Element & {updateComplete?: Promise<unknown>})
+        .updateComplete;
+      if (ready) {
+        ready.then(pin);
+      } else {
+        pin();
+      }
+    });
+}

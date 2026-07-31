@@ -48,6 +48,7 @@ import {
   isSurveyComplete,
 } from '@deliberation-lab/utils';
 
+import {pinAllocationSliderLabels} from '../../shared/utils';
 import {core} from '../../core/core';
 import {CohortService} from '../../services/cohort.service';
 import {ParticipantService} from '../../services/participant.service';
@@ -70,6 +71,11 @@ export class SurveyView extends MobxLitElement {
 
   @property() stage: SurveyPerParticipantStageConfig | undefined = undefined;
   @property() renderSummaryView: boolean = false; // If true, render a minimized summary view.
+
+  override updated() {
+    // An allocation slider shows its amount at all times
+    pinAllocationSliderLabels(this.renderRoot);
+  }
 
   private getParticipants() {
     if (!this.stage) return [];
@@ -217,7 +223,11 @@ export class SurveyView extends MobxLitElement {
           this.renderAllocationItem(question, item, participant, allocated),
         )}
         ${isExact
-          ? nothing
+          ? html`<div class="allocation-total">
+              The current total is
+              ${formatAllocationValue(question.totalValue, question.unitText)}.
+              You can reduce the amount in one slider to increase it in another.
+            </div>`
           : html`<div class="allocation-total required">
               The current total is
               ${formatAllocationValue(allocated, question.unitText)}. Please
@@ -266,15 +276,13 @@ export class SurveyView extends MobxLitElement {
     return html`
       <div class="allocation-item">
         <label class="allocation-item-text" for=${id}>${item.text}</label>
-        <div class="allocation-item-value">
-          Current: ${formatAllocationValue(value, question.unitText)}
-        </div>
         <md-slider
           id=${id}
           min="0"
           max=${question.totalValue}
           step=${stepSize}
           value=${value}
+          value-label=${formatAllocationValue(value, question.unitText)}
           ticks
           labeled
           ?disabled=${this.participantService.disableStage}

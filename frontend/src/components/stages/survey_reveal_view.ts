@@ -10,6 +10,7 @@ import {getParticipantInlineDisplay} from '../../shared/participant.utils';
 import {
   AllocationSurveyAnswer,
   AllocationSurveyQuestion,
+  formatAllocationValue,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   getCheckedItemIds,
@@ -326,7 +327,10 @@ export class SurveyReveal extends MobxLitElement {
         answerText = allocationQuestion.items
           .map(
             (item) =>
-              `${item.text}: ${allocationAnswer.allocationMap[item.id] ?? 0}`,
+              `${item.text}: ${formatAllocationValue(
+                allocationAnswer.allocationMap[item.id] ?? 0,
+                allocationQuestion.unitText,
+              )}`,
           )
           .join(', ');
         break;
