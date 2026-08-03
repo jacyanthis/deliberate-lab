@@ -122,7 +122,7 @@ export class ChatPanel extends MobxLitElement {
     );
 
     return html`
-      <div class="side-layout">
+      <div class="side-layout ${observerPresent ? 'wide' : ''}">
         <stage-description .stage=${this.stage} noPadding> </stage-description>
         ${showQuiz ? this.renderQuiz() : nothing} ${this.renderTimer()}
         ${this.renderParticipantList()}

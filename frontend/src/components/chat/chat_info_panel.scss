@@ -21,6 +21,13 @@
   overflow-y: auto;
   padding: common.$main-content-padding;
   width: 240px;
+
+  // Wider when representative agents are in the cohort: names like
+  // "Butterfly 2's Agent (yours)" need the extra room. Studies without
+  // representatives keep the standard width.
+  &.wide {
+    width: 300px;
+  }
   height: 100%;
   box-sizing: border-box;
   position: relative; // anchor for the quiz overlay
