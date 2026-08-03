@@ -303,6 +303,31 @@ export async function createAgentChatMessageFromPrompt(
   // Unreachable: every path above returns.
 
   async function runAgentChatMessagePipeline(): Promise<boolean> {
+    // A group chat prompt describes the other participants, and agents spawned
+    // for the cohort claim their persona (and the bank data materialized with
+    // it) a moment after they are created. Building the prompt in that window
+    // yields a message written as though the others were not there, which a
+    // scripted agent spends as one of its numbered turns and cannot take back.
+    // Throwing here rather than returning puts it on the retry-until-deadline
+    // path, so the turn waits for the claims instead of being skipped.
+    if (stage?.kind === StageKind.CHAT) {
+      const cohortAgents = await getFirestoreActiveParticipants(
+        experimentId,
+        cohortId,
+        null, // any stage: a spawned agent may not have entered this one yet
+        true, // agents only
+      );
+      const stillClaiming = cohortAgents.filter(
+        (agent) => agent.agentConfig?.needsPersonaGeneration,
+      );
+      if (stillClaiming.length > 0) {
+        throw new Error(
+          `[chat.agent] ${stillClaiming.length} agent(s) in cohort ` +
+            `${cohortId} have not claimed a persona yet; waiting before ` +
+            `${user.publicId} writes a message that would describe them`,
+        );
+      }
+    }
     // Check if this is an initial message request (empty triggerChatId)
     if (triggerChatId === '') {
       // Check if we've already sent an initial message for this user
