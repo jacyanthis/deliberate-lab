@@ -12,6 +12,7 @@ import {
   createScaleSurveyQuestion,
   createAllocationSurveyQuestion,
   createAllocationItem,
+  createCheckItem,
   ParticipantDownload,
   StageKind,
   SurveyQuestionKind,
@@ -122,6 +123,51 @@ describe('File utils', () => {
     ]);
 
     // A question with no answer at all stays blank
+    const noAnswer = {answerMap: {}} as unknown as ParticipantDownload;
+    expect(file_utils.getSurveyStageCSVColumns(config, noAnswer)).toEqual([
+      '',
+      '',
+    ]);
+  });
+
+  it('write checkbox item csv columns and values', () => {
+    const radio = createCheckItem({text: 'Radio'});
+    const papers = createCheckItem({text: 'Papers'});
+    const question = createCheckSurveyQuestion({
+      questionTitle: 'Which of these do you use?',
+      items: [radio, papers],
+    });
+    const config = createSurveyStage({questions: [question]});
+
+    expect(file_utils.getSurveyStageCSVColumns(config, null)).toEqual(
+      [
+        /Item 1 \([-a-z0-9]+\) - "Which of these do you use\?" - Survey [-a-z0-9]+/,
+        /Item 2 \([-a-z0-9]+\) - "Which of these do you use\?" - Survey [-a-z0-9]+/,
+      ].map(expect.stringMatching),
+    );
+
+    const participant = {
+      answerMap: {
+        [config.id]: {
+          id: config.id,
+          kind: StageKind.SURVEY,
+          answerMap: {
+            [question.id]: {
+              id: question.id,
+              kind: SurveyQuestionKind.CHECK,
+              isChecked: true,
+              checkedMap: {[radio.id]: true},
+            },
+          },
+        },
+      },
+    } as unknown as ParticipantDownload;
+
+    expect(file_utils.getSurveyStageCSVColumns(config, participant)).toEqual([
+      'true',
+      'false',
+    ]);
+
     const noAnswer = {answerMap: {}} as unknown as ParticipantDownload;
     expect(file_utils.getSurveyStageCSVColumns(config, noAnswer)).toEqual([
       '',

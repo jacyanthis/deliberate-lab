@@ -355,3 +355,64 @@ describe('Display strings for allocation questions', () => {
     expect(result).toContain('Roads: 100 %, Schools: 0 % (out of 100 %)');
   });
 });
+
+describe('Display strings for checkbox questions with items', () => {
+  const itemQuestion: CheckSurveyQuestion = {
+    id: 'check-items-q',
+    kind: SurveyQuestionKind.CHECK,
+    questionTitle: 'Which of these do you use?',
+    isRequired: false,
+    items: [
+      {id: 'radio', text: 'Radio'},
+      {id: 'papers', text: 'Papers'},
+    ],
+    maxSelections: 1,
+  };
+
+  it('should describe the items and the limit when there are no answers', () => {
+    const result = getSurveyStageDisplayPromptString([], [itemQuestion]);
+    expect(result).toBe(
+      '* Which of these do you use? (Checkbox; items: Radio, Papers; at most 1)',
+    );
+  });
+
+  it('should list what the participant checked', () => {
+    const answer: SurveyStageParticipantAnswer = {
+      id: 'stage4',
+      kind: StageKind.SURVEY,
+      answerMap: {
+        'check-items-q': {
+          id: 'check-items-q',
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: true,
+          checkedMap: {radio: true, papers: false},
+        },
+      },
+    };
+    const result = getSurveyStageDisplayPromptString(
+      [{...mockParticipant1, answer}],
+      [itemQuestion],
+    );
+    expect(result).toContain('Which of these do you use?: Radio');
+  });
+
+  it('should say none when nothing is checked', () => {
+    const answer: SurveyStageParticipantAnswer = {
+      id: 'stage4',
+      kind: StageKind.SURVEY,
+      answerMap: {
+        'check-items-q': {
+          id: 'check-items-q',
+          kind: SurveyQuestionKind.CHECK,
+          isChecked: false,
+          checkedMap: {},
+        },
+      },
+    };
+    const result = getSurveyStageDisplayPromptString(
+      [{...mockParticipant1, answer}],
+      [itemQuestion],
+    );
+    expect(result).toContain('Which of these do you use?: none');
+  });
+});

@@ -1,8 +1,13 @@
 import {
   AllocationSurveyAnswer,
   AllocationSurveyQuestion,
+  CheckSurveyAnswer,
+  CheckSurveyQuestion,
   SurveyQuestionKind,
   createAllocationSurveyQuestion,
+  createCheckSurveyQuestion,
+  getCheckedItemIds,
+  getRemainingCheckSelections,
   formatAllocationValue,
   getAllocationTotal,
   isSurveyAnswerComplete,
@@ -113,5 +118,122 @@ describe('isSurveyAnswerComplete for allocation questions', () => {
       }),
     ).toBe(false);
     expect(isSurveyComplete(questions, {})).toBe(false);
+  });
+});
+
+const checkQuestion: CheckSurveyQuestion = {
+  id: 'check-q',
+  kind: SurveyQuestionKind.CHECK,
+  questionTitle: 'Which of these do you use?',
+  isRequired: false,
+  items: [
+    {id: 'radio', text: 'Radio'},
+    {id: 'papers', text: 'Papers'},
+    {id: 'letters', text: 'Letters'},
+  ],
+  maxSelections: null,
+};
+
+function checkAnswer(checkedMap: Record<string, boolean>): CheckSurveyAnswer {
+  return {
+    id: checkQuestion.id,
+    kind: SurveyQuestionKind.CHECK,
+    isChecked: Object.values(checkedMap).some((checked) => checked),
+    checkedMap,
+  };
+}
+
+describe('createCheckSurveyQuestion', () => {
+  it('should default to a single checkbox with no selection limit', () => {
+    const question = createCheckSurveyQuestion();
+    expect(question.items).toEqual([]);
+    expect(question.maxSelections).toBeNull();
+    expect(question.isRequired).toBe(false);
+  });
+});
+
+describe('getCheckedItemIds', () => {
+  it('should list the checked items in question order', () => {
+    expect(
+      getCheckedItemIds(
+        checkQuestion,
+        checkAnswer({letters: true, radio: true}),
+      ),
+    ).toEqual(['radio', 'letters']);
+  });
+
+  it('should ignore items the question no longer has', () => {
+    expect(
+      getCheckedItemIds(checkQuestion, checkAnswer({radio: true, fax: true})),
+    ).toEqual(['radio']);
+  });
+
+  it('should return nothing without an answer', () => {
+    expect(getCheckedItemIds(checkQuestion, undefined)).toEqual([]);
+  });
+});
+
+describe('getRemainingCheckSelections', () => {
+  it('should count down from the limit', () => {
+    const question = {...checkQuestion, maxSelections: 2};
+    expect(getRemainingCheckSelections(question, undefined)).toBe(2);
+    expect(
+      getRemainingCheckSelections(question, checkAnswer({radio: true})),
+    ).toBe(1);
+    expect(
+      getRemainingCheckSelections(
+        question,
+        checkAnswer({radio: true, papers: true}),
+      ),
+    ).toBe(0);
+  });
+
+  it('should treat a limit of at least the item count as no limit', () => {
+    expect(
+      getRemainingCheckSelections(
+        {...checkQuestion, maxSelections: 3},
+        undefined,
+      ),
+    ).toBeNull();
+    expect(
+      getRemainingCheckSelections(
+        {...checkQuestion, maxSelections: 9},
+        undefined,
+      ),
+    ).toBeNull();
+  });
+
+  it('should treat an absent limit as no limit', () => {
+    expect(getRemainingCheckSelections(checkQuestion, undefined)).toBeNull();
+  });
+});
+
+describe('isSurveyAnswerComplete for checkbox questions', () => {
+  it('should be complete once an item is checked', () => {
+    const required = {...checkQuestion, isRequired: true};
+    expect(isSurveyAnswerComplete(checkAnswer({radio: true}), required)).toBe(
+      true,
+    );
+    expect(isSurveyAnswerComplete(checkAnswer({}), required)).toBe(false);
+  });
+
+  it('should leave the single checkbox behavior alone', () => {
+    const single = createCheckSurveyQuestion({
+      questionTitle: 'Agree?',
+      isRequired: true,
+    });
+    const answer: CheckSurveyAnswer = {
+      id: single.id,
+      kind: SurveyQuestionKind.CHECK,
+      isChecked: true,
+    };
+    expect(isSurveyAnswerComplete(answer, single)).toBe(true);
+    expect(isSurveyAnswerComplete({...answer, isChecked: false}, single)).toBe(
+      false,
+    );
+  });
+
+  it('should not require an optional item question', () => {
+    expect(isSurveyComplete([checkQuestion], {})).toBe(true);
   });
 });

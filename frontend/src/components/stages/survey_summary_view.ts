@@ -8,6 +8,7 @@ import {classMap} from 'lit/directives/class-map.js';
 
 import {
   AllocationSurveyQuestion,
+  CheckItem,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   MultipleChoiceItem,
@@ -24,6 +25,7 @@ import {
   TextSurveyQuestion,
   formatAllocationValue,
   getAllocationTotal,
+  getCheckedItemIds,
   isMultipleChoiceImageQuestion,
   isSurveyComplete,
   isSurveyAnswerComplete,
@@ -143,6 +145,9 @@ export class SurveyView extends MobxLitElement {
   }
 
   private renderCheckQuestion(question: CheckSurveyQuestion) {
+    if (question.items?.length) {
+      return this.renderCheckItemsQuestion(question);
+    }
     const isChecked = () => {
       if (!this.stage) return;
       const answer = this.participantAnswerService.getSurveyAnswer(
@@ -173,6 +178,50 @@ export class SurveyView extends MobxLitElement {
             ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
           </div>
         </label>
+      </div>
+    `;
+  }
+
+  private renderCheckItemsQuestion(question: CheckSurveyQuestion) {
+    const getAnswer = () => {
+      if (!this.stage) return undefined;
+      const answer = this.participantAnswerService.getSurveyAnswer(
+        this.stage.id,
+        question.id,
+      );
+      if (answer && answer.kind === SurveyQuestionKind.CHECK) {
+        return answer;
+      }
+      return undefined;
+    };
+
+    const answer = getAnswer();
+    const checked = getCheckedItemIds(question, answer);
+    const titleClasses = classMap({
+      required: question.isRequired && checked.length === 0,
+    });
+
+    return html`
+      <div class="question">
+        <div class=${titleClasses}>
+          ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
+        </div>
+        <div class="checkbox-items">
+          ${(question.items ?? []).map(
+            (item: CheckItem) => html`
+              <label class="checkbox-wrapper">
+                <md-checkbox
+                  touch-target="wrapper"
+                  aria-label=${item.text}
+                  ?checked=${checked.includes(item.id)}
+                  disabled
+                >
+                </md-checkbox>
+                <div>${unsafeHTML(convertMarkdownToHTML(item.text))}</div>
+              </label>
+            `,
+          )}
+        </div>
       </div>
     `;
   }

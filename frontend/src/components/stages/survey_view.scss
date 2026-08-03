@@ -179,6 +179,11 @@
   gap: common.$spacing-small;
 }
 
+.checkbox-items {
+  @include common.flex-column;
+  gap: common.$spacing-xs;
+}
+
 .checkbox-wrapper {
   @include common.flex-row-align-center;
   flex-wrap: wrap;
