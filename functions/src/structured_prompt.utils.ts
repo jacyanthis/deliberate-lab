@@ -1,4 +1,5 @@
 import {
+  ChatPromptConfig,
   getActiveProfileSetId,
   PROMPT_ITEM_PROFILE_CONTEXT_PARTICIPANT_SCAFFOLDING,
   PROMPT_ITEM_PROFILE_INFO_PARTICIPANT_SCAFFOLDING,
@@ -104,11 +105,55 @@ export async function getStructuredPromptConfig(
         stage.id,
         user.agentConfig?.agentId,
       );
-      // Return stored prompt or fallback default prompt
-      return (
-        participantPrompt ??
-        stageManager.getDefaultParticipantStructuredPrompt(stage)
-      );
+      if (participantPrompt) {
+        return participantPrompt;
+      }
+      // No stored prompt, so fall back to the stage default. That default
+      // leaves wordsPerMinute unset, which means a spawned agent answers with
+      // no typing delay at all, so let the experiment supply chat settings for
+      // agents it spawns rather than configures.
+      let fallbackPrompt =
+        stageManager.getDefaultParticipantStructuredPrompt(stage);
+      if (!fallbackPrompt) {
+        return fallbackPrompt;
+      }
+      // A representative (an agent standing in for a person, marked by its
+      // repPersonaBank flag) speaks from the represented person's interview,
+      // which arrives through its prompt context. The default prompt would
+      // additionally hand it every participant's survey answers via stage
+      // context, which the study withholds by design. Strip participant
+      // answers for representatives only; other agents keep the default.
+      if (user.agentConfig?.repPersonaBank) {
+        fallbackPrompt = {
+          ...fallbackPrompt,
+          prompt: fallbackPrompt.prompt.map((item) =>
+            item.type === PromptItemType.STAGE_CONTEXT
+              ? {...item, includeParticipantAnswers: false}
+              : item,
+          ),
+        };
+      }
+      // Chat settings only exist on chat-stage prompts, so the merge is
+      // limited to those; other stage kinds return the fallback as is.
+      if (
+        stage.kind === StageKind.CHAT ||
+        stage.kind === StageKind.PRIVATE_CHAT
+      ) {
+        const experiment = await getFirestoreExperiment(experimentId);
+        const spawnedChatSettings = experiment?.spawnedAgentChatSettings;
+        if (spawnedChatSettings) {
+          const chatFallback = fallbackPrompt as ChatPromptConfig;
+          const merged: ChatPromptConfig = {
+            ...chatFallback,
+            chatSettings: {
+              ...chatFallback.chatSettings,
+              ...spawnedChatSettings,
+            },
+          };
+          return merged;
+        }
+      }
+      return fallbackPrompt;
     case UserType.MEDIATOR:
       const mediatorPrompt = await getAgentMediatorPrompt(
         experimentId,
