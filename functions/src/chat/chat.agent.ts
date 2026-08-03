@@ -309,8 +309,13 @@ export async function createAgentChatMessageFromPrompt(
     // yields a message written as though the others were not there, which a
     // scripted agent spends as one of its numbered turns and cannot take back.
     // Throwing here rather than returning puts it on the retry-until-deadline
-    // path, so the turn waits for the claims instead of being skipped.
-    if (stage?.kind === StageKind.CHAT) {
+    // path, so the turn waits for the claims instead of being skipped. Only
+    // turn-based chats have that retry path, so the wait is scoped to them;
+    // free-form chats are left exactly as before.
+    if (
+      stage?.kind === StageKind.CHAT &&
+      (stage as ChatStageConfig).isTurnBased
+    ) {
       const cohortAgents = await getFirestoreActiveParticipants(
         experimentId,
         cohortId,
