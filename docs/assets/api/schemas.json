@@ -2356,6 +2356,12 @@
           "minimum": 1,
           "type": ["null", "integer"]
         },
+        "randomizeOrder": {
+          "type": "boolean"
+        },
+        "randomizeOrderKey": {
+          "type": "string"
+        },
         "condition": {
           "anyOf": [
             {
@@ -2436,6 +2442,12 @@
               ]
             }
           ]
+        },
+        "randomizeOrder": {
+          "type": "boolean"
+        },
+        "randomizeOrderKey": {
+          "type": "string"
         },
         "condition": {
           "anyOf": [
@@ -2570,6 +2582,12 @@
         },
         "unitText": {
           "type": ["null", "string"]
+        },
+        "randomizeOrder": {
+          "type": "boolean"
+        },
+        "randomizeOrderKey": {
+          "type": "string"
         },
         "condition": {
           "anyOf": [

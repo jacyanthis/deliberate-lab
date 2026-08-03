@@ -1303,6 +1303,8 @@ class CheckSurveyQuestion(BaseModel):
     isRequired: bool
     items: list[CheckItem] | None = None
     maxSelections: Annotated[int | None, Field(ge=1)] = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1317,6 +1319,8 @@ class MultipleChoiceSurveyQuestion(BaseModel):
     options: list[MultipleChoiceItem]
     correctAnswerId: str | None = None
     displayType: MultipleChoiceDisplayType | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1350,6 +1354,8 @@ class AllocationSurveyQuestion(BaseModel):
     totalValue: Annotated[int, Field(ge=1)]
     stepSize: Annotated[int | None, Field(ge=1)] = None
     unitText: str | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
