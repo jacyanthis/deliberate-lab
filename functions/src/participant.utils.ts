@@ -1596,6 +1596,20 @@ export async function completeParticipantTransfer(
     const getParticipantRef = (id: string) =>
       app.firestore().doc(`experiments/${experimentId}/participants/${id}`);
 
+    // Agent participants configured for this experiment. Every agent spawned
+    // below takes its id from here, so the experimenter's prompts apply to it;
+    // with none configured each falls back to the stage default as before.
+    const agentParticipantsQuery = await app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('agentParticipants')
+      .get();
+
+    const personas = agentParticipantsQuery.docs.map(
+      (doc) => doc.data() as AgentPersonaConfig,
+    );
+
     // Spawn the observer's representative agent (strictly for observer cohorts)
     if (participant.isObserver && participant.hasRepresentative) {
       const repAgentId = generateId();
@@ -1615,8 +1629,10 @@ export async function completeParticipantTransfer(
         name: repProfile.name,
         avatar: repProfile.avatar,
         agentConfig: {
-          agentId: repAgentId,
-          promptContext: `You are ${observerName}'s representative in this discussion. Speak and advocate on ${observerName}'s behalf, representing their perspective from their earlier responses rather than expressing your own independent opinions. Ensure you properly separate every paragraph with one empty line in between.`,
+          // Same configuration path as every other spawned agent, so what a
+          // representative is shown is the experimenter's choice.
+          agentId: personas[0]?.id ?? repAgentId,
+          promptContext: `You are ${observerName}'s representative in this discussion. Represent ${observerName}'s perspective from their earlier responses rather than expressing your own independent opinions. When you speak, attribute the views to ${observerName} by name (for example, "${observerName} thinks" or "${observerName}'s view is") rather than voicing them as your own. Ensure you properly separate every paragraph with one empty line in between.`,
           modelSettings:
             experiment.spawnedAgentModelSettings ??
             DEFAULT_AGENT_MODEL_SETTINGS,
@@ -1642,17 +1658,6 @@ export async function completeParticipantTransfer(
     }
 
     // Spawn the other virtual AI agents directly inside targetCohortId
-    const agentParticipantsQuery = await app
-      .firestore()
-      .collection('experiments')
-      .doc(experimentId)
-      .collection('agentParticipants')
-      .get();
-
-    const personas = agentParticipantsQuery.docs.map(
-      (doc) => doc.data() as AgentPersonaConfig,
-    );
-
     for (let i = 0; i < numOtherAgents; i++) {
       const agentId = generateId();
       const agentTimestamps = createProgressTimestamps();
@@ -1717,9 +1722,14 @@ export async function completeParticipantTransfer(
         // opinions, like the observer's representative.
         if (agentProfile.agentConfig) {
           const representedName = drawnName || agentProfile.name;
-          // onParticipantCreation appends the stored bank persona to this
-          // framing.
-          agentProfile.agentConfig.promptContext = `You are ${representedName}'s representative in this discussion. You are a separate agent, not ${representedName} yourself. Speak and advocate on ${representedName}'s behalf, representing their perspective from their materials below, rather than expressing your own independent opinions or adopting their persona as your own identity. The materials below may use a different name for ${representedName}; that is the same person, and you should call them ${representedName} here. Ensure you properly separate every paragraph with one empty line in between.\n\n${representedName}'s materials:`;
+          // onParticipantCreation appends the claimed representative-bank
+          // persona and then the represented person's materials to this
+          // framing (both are self-describing).
+          agentProfile.agentConfig.promptContext = `You are ${representedName}'s representative in this discussion. Represent ${representedName}'s perspective from the materials below rather than expressing your own independent opinions. When you speak, attribute the views to ${representedName} by name (for example, "${representedName} thinks" or "${representedName}'s view is") rather than voicing them as your own. Ensure you properly separate every paragraph with one empty line in between.`;
+          // Every representative draws a behavioral persona from the
+          // representative bank, so the observer's representative and the
+          // other representatives are configured symmetrically.
+          agentProfile.agentConfig.repPersonaBank = true;
           // Bank persona, not a slot-based one.
           delete agentProfile.agentConfig.personaSlotKey;
           if (personaHash) {

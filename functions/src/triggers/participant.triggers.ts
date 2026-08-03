@@ -11,11 +11,13 @@ import {
   ParticipantStatus,
   StageConfig,
   StageKind,
+  StageParticipantAnswer,
   shuffleWithSeed,
   buildGeneratePersonaPrompt,
   createModelGenerationConfig,
   ModelResponseStatus,
   DEFAULT_AGENT_MODEL_SETTINGS,
+  getRepresentedName,
 } from '@deliberation-lab/utils';
 import {startAgentParticipant} from '../agent_participant.utils';
 import {
@@ -65,16 +67,21 @@ export const onParticipantCreation = onDocumentCreated(
     // provides one. The bank is one flat pool (no per-round keying). Without
     // a bank this finds nothing and the representative behaves as before.
     if (participant.agentConfig?.repPersonaBank) {
-      const content = await claimStoredPersonaByHash(
+      const claimed = await claimStoredPersonaByHash(
         event.params.experimentId,
         null,
         participant.privateId,
         'repPersonas',
       );
+      const content = claimed?.content;
       if (content) {
         const resolved = content
           .split('{{name}}')
-          .join(String(participant.name ?? participant.publicId))
+          .join(
+            getRepresentedName(
+              String(participant.name ?? participant.publicId),
+            ),
+          )
           .split('{{publicId}}')
           .join(participant.publicId);
         await app.firestore().runTransaction(async (transaction) => {
@@ -181,22 +188,47 @@ export const onParticipantCreation = onDocumentCreated(
         // spread evenly). Tried first so agents that also carry the sketch
         // key get the round-specific persona when the bank has one.
         if (personaHash) {
-          const content = await claimStoredPersonaByHash(
+          const claimed = await claimStoredPersonaByHash(
             experimentId,
             personaHash,
             participant.privateId,
           );
-          if (content) {
+          if (claimed?.content) {
             // Content may reference the claiming agent's profile.
-            const resolved = content
+            const resolved = claimed.content
               .split('{{name}}')
-              .join(String(participant.name ?? participant.publicId))
+              .join(
+                getRepresentedName(
+                  String(participant.name ?? participant.publicId),
+                ),
+              )
               .split('{{publicId}}')
               .join(participant.publicId);
             console.log(
               `Claimed bank persona for participant ${participant.privateId} (hash ${personaHash.slice(0, 8)}).`,
             );
             await applyPersona(resolved);
+            // Materialize any stage answers the bank stored for this persona
+            // (e.g. its survey responses) as real answer docs, so prompts and
+            // exports present the persona's data exactly like a live
+            // participant's. Scoped to inactive personas, whose only role is
+            // to stand in for participants in prompts.
+            const stageAnswers = claimed.stageAnswers as
+              | Record<string, StageParticipantAnswer>
+              | undefined;
+            if (participant.agentConfig?.isInactivePersona && stageAnswers) {
+              for (const [answerStageId, answer] of Object.entries(
+                stageAnswers,
+              )) {
+                await getFirestoreParticipantRef(
+                  experimentId,
+                  participant.privateId,
+                )
+                  .collection('stageData')
+                  .doc(answerStageId)
+                  .set(answer);
+              }
+            }
             success = true;
           }
         }
@@ -312,6 +344,34 @@ export const onParticipantCreation = onDocumentCreated(
           });
         }
       }
+    }
+
+    // The persona step above clears the flag on every path it can reach, but
+    // it does nothing at all when the experiment has no experimenter data (no
+    // API key configured), and a thrown error would skip it too. A group chat
+    // waits for every agent to be ready, so a flag left set holds the chat on
+    // the setup banner indefinitely. Clear it here as well: the agent then
+    // takes part with whatever context it has and any real problem surfaces
+    // through the normal model-error path instead of a silent stall.
+    if (activeParticipant.agentConfig?.needsPersonaGeneration) {
+      console.error(
+        `[participant.triggers] No persona was attached to agent ${participant.privateId}; letting it proceed rather than holding the chat.`,
+      );
+      await app.firestore().runTransaction(async (transaction) => {
+        const pRef = getFirestoreParticipantRef(
+          event.params.experimentId,
+          participant.privateId,
+        );
+        const pDoc = (
+          await transaction.get(pRef)
+        ).data() as ParticipantProfileExtended;
+        if (pDoc?.agentConfig?.needsPersonaGeneration) {
+          pDoc.connected = true;
+          pDoc.agentConfig.needsPersonaGeneration = false;
+          transaction.set(pRef, pDoc);
+          activeParticipant = pDoc;
+        }
+      });
     }
 
     // Set up participant stage answers

@@ -1,4 +1,5 @@
 import {
+  ChatPromptConfig,
   getActiveProfileSetId,
   PROMPT_ITEM_PROFILE_CONTEXT_PARTICIPANT_SCAFFOLDING,
   PROMPT_ITEM_PROFILE_INFO_PARTICIPANT_SCAFFOLDING,
@@ -104,11 +105,39 @@ export async function getStructuredPromptConfig(
         stage.id,
         user.agentConfig?.agentId,
       );
-      // Return stored prompt or fallback default prompt
-      return (
-        participantPrompt ??
-        stageManager.getDefaultParticipantStructuredPrompt(stage)
-      );
+      if (participantPrompt) {
+        return participantPrompt;
+      }
+      // No stored prompt, so fall back to the stage default. That default
+      // leaves wordsPerMinute unset, which means a spawned agent answers with
+      // no typing delay at all, so let the experiment supply chat settings for
+      // agents it spawns rather than configures.
+      const fallbackPrompt =
+        stageManager.getDefaultParticipantStructuredPrompt(stage);
+      if (!fallbackPrompt) {
+        return fallbackPrompt;
+      }
+      // Chat settings only exist on chat-stage prompts, so the merge is
+      // limited to those; other stage kinds return the fallback as is.
+      if (
+        stage.kind === StageKind.CHAT ||
+        stage.kind === StageKind.PRIVATE_CHAT
+      ) {
+        const experiment = await getFirestoreExperiment(experimentId);
+        const spawnedChatSettings = experiment?.spawnedAgentChatSettings;
+        if (spawnedChatSettings) {
+          const chatFallback = fallbackPrompt as ChatPromptConfig;
+          const merged: ChatPromptConfig = {
+            ...chatFallback,
+            chatSettings: {
+              ...chatFallback.chatSettings,
+              ...spawnedChatSettings,
+            },
+          };
+          return merged;
+        }
+      }
+      return fallbackPrompt;
     case UserType.MEDIATOR:
       const mediatorPrompt = await getAgentMediatorPrompt(
         experimentId,
@@ -1087,8 +1116,19 @@ function getStageContextForPrompt(
   // alongside the human, in a per-cohort shuffled order, so a mediator sees
   // every participant's block in one uniform list. With no persona agents
   // this is byte-identical to the prior output.
+  //
+  // A persona with an actual recorded answer for this stage (materialized at
+  // claim time from the bank) renders natively like any participant, so its
+  // data and a live participant's are presented identically; its stored
+  // content stands in only for stages where it has no real answer.
+  const hasRealAnswer = (p: ParticipantProfileExtended) =>
+    stageContext.privateAnswers.some(
+      (a) => a.participantPublicId === p.publicId,
+    );
   const realParticipants = item.includeParticipantAnswers
-    ? participants.filter((p) => !p.agentConfig?.isInactivePersona)
+    ? participants.filter(
+        (p) => !p.agentConfig?.isInactivePersona || hasRealAnswer(p),
+      )
     : [];
   // Inactive personas' content must be included whenever participant answers
   // are (mirroring realParticipants above), not just when the rendered stage
@@ -1096,12 +1136,18 @@ function getStageContextForPrompt(
   // them.
   const personaAgents = item.includeParticipantAnswers
     ? participants.filter(
-        (p) => p.agentConfig?.isInactivePersona && p.agentConfig?.promptContext,
+        (p) =>
+          p.agentConfig?.isInactivePersona &&
+          p.agentConfig?.promptContext &&
+          !hasRealAnswer(p),
       )
     : [];
+  const hasInactivePersonas =
+    item.includeParticipantAnswers &&
+    participants.some((p) => p.agentConfig?.isInactivePersona);
 
   let stageDisplay: string;
-  if (personaAgents.length === 0) {
+  if (!hasInactivePersonas) {
     stageDisplay = stageManager.getStageDisplayForPrompt(
       stage,
       realParticipants,

@@ -1564,14 +1564,20 @@ export async function sendAgentGroupChatMessage(
       stageId,
       `${triggerChatId}-${chatMessage.type}`,
     );
-    const hasTriggerResponse = (await triggerResponseDoc.get()).exists;
-    if (hasTriggerResponse) {
-      console.log('Someone already responded');
-      return true; // expected outcome (TODO: return status enum)
+    // Claim the trigger with a create, which fails when the document is
+    // already there. A get followed by a set lets two agents that finish their
+    // typing delay at the same moment both read "absent" and both post; with a
+    // shared delay that is the normal case rather than a rare one.
+    try {
+      await firestoreWriteWithRetry(() => triggerResponseDoc.create({}));
+    } catch (error) {
+      const code = (error as {code?: number | string}).code;
+      if (code === 6 || code === 'already-exists') {
+        console.log('Someone already responded');
+        return true; // expected outcome (TODO: return status enum)
+      }
+      throw error;
     }
-
-    // Otherwise, log response ID as trigger message
-    await firestoreWriteWithRetry(() => triggerResponseDoc.set({}));
   }
 
   // Send chat message
@@ -1628,10 +1634,14 @@ export async function sendAgentPrivateChatMessage(
   // Check if the conversation has moved on,
   // i.e., trigger chat ID is no longer that latest message.
   // Skip this check for initial messages (empty triggerChatId).
-  // Also skip it entirely for group-style turn-based private chats: the turn
-  // order is deterministic, so a newer message never means this agent's turn
-  // was superseded. Dropping here would stall the whole turn-based chat.
-  if (triggerChatId !== '' && !isTurnBasedPrivate) {
+  //
+  // This runs after the typing delay, which can be tens of seconds, so by now
+  // the turn may belong to someone else. In a turn-based chat that is decisive:
+  // an agent speaks on its turn or not at all, and a message newer than the one
+  // it was triggered by means the turn has passed. Posting anyway puts a
+  // mediator message on the participant's turn, and where two mediators are
+  // present each one's message re-triggers the other into an unbounded loop.
+  if (triggerChatId !== '') {
     const chatHistory = await getFirestorePrivateChatMessages(
       experimentId,
       participantId,
@@ -1645,7 +1655,11 @@ export async function sendAgentPrivateChatMessage(
       nonSystemHistory[nonSystemHistory.length - 1].id !== triggerChatId
     ) {
       // TODO: Write chat log
-      console.log('Conversation has moved on');
+      console.log(
+        isTurnBasedPrivate
+          ? 'Turn has passed; this agent is no longer the speaker'
+          : 'Conversation has moved on',
+      );
       return true; // expected outcome (TODO: return status enum)
     }
   }
@@ -1660,14 +1674,20 @@ export async function sendAgentPrivateChatMessage(
       stageId,
       `${triggerChatId}-${chatMessage.type}`,
     );
-    const hasTriggerResponse = (await triggerResponseDoc.get()).exists;
-    if (hasTriggerResponse) {
-      console.log('Someone already responded');
-      return true; // expected outcome (TODO: return status enum)
+    // Claim the trigger with a create, which fails when the document is
+    // already there. A get followed by a set lets two agents that finish their
+    // typing delay at the same moment both read "absent" and both post; with a
+    // shared delay that is the normal case rather than a rare one.
+    try {
+      await firestoreWriteWithRetry(() => triggerResponseDoc.create({}));
+    } catch (error) {
+      const code = (error as {code?: number | string}).code;
+      if (code === 6 || code === 'already-exists') {
+        console.log('Someone already responded');
+        return true; // expected outcome (TODO: return status enum)
+      }
+      throw error;
     }
-
-    // Otherwise, log response ID as trigger message
-    await firestoreWriteWithRetry(() => triggerResponseDoc.set({}));
   }
 
   // Send chat message
@@ -1774,6 +1794,29 @@ async function sendInitialGroupChatMessages(
     stageId,
     false, // checkIsAgent = false to get ALL participants
   );
+
+  // Agents spawned for this cohort receive their persona a moment after they
+  // are created, whether it is claimed from a bank or generated. Until every
+  // one of them has it, the chat is still being set up: a prompt built now
+  // would describe them as taking part while saying nothing about them, and a
+  // turn spent on such a message cannot be taken back. Assign no turn and send
+  // nothing yet, which also holds the participant's setup banner in place; the
+  // last agent to become ready calls this again.
+  const agentsBeingPrepared = (
+    await getFirestoreActiveParticipants(
+      experimentId,
+      cohortId,
+      null, // any stage: a spawned agent may not have entered this one yet
+      true, // agents only
+    )
+  ).filter((agent) => agent.agentConfig?.needsPersonaGeneration);
+  if (agentsBeingPrepared.length > 0) {
+    console.log(
+      `[chat.agent] Group chat ${stageId} in cohort ${cohortId} is still being ` +
+        `set up: ${agentsBeingPrepared.length} agent(s) without a persona.`,
+    );
+    return;
+  }
 
   const allParticipantIds = allParticipants.map((p) => p.privateId);
 
