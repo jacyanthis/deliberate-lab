@@ -296,6 +296,39 @@ export class SurveyEditor extends MobxLitElement {
     `;
   }
 
+  /** Toggle for shuffling a question's items or options per participant. */
+  private renderRandomizeOrderToggle(
+    question:
+      | CheckSurveyQuestion
+      | MultipleChoiceSurveyQuestion
+      | AllocationSurveyQuestion,
+    index: number,
+    itemCount: number,
+  ) {
+    if (itemCount < 2) return nothing;
+    const toggle = () => {
+      this.updateQuestion(
+        {...question, randomizeOrder: !question.randomizeOrder},
+        index,
+      );
+    };
+    return html`
+      <label class="checkbox-wrapper">
+        <md-checkbox
+          touch-target="wrapper"
+          ?checked=${question.randomizeOrder ?? false}
+          ?disabled=${!this.experimentEditor.canEditStages}
+          @click=${toggle}
+        >
+        </md-checkbox>
+        <span class="checkbox-label"
+          >Randomize the order shown to each participant (answers stay tied to
+          each item, so data is unaffected)</span
+        >
+      </label>
+    `;
+  }
+
   private renderCheckQuestion(question: CheckSurveyQuestion, index: number) {
     const toggleIsRequired = () => {
       const updatedQuestion = {...question, isRequired: !question.isRequired};
@@ -401,6 +434,7 @@ export class SurveyEditor extends MobxLitElement {
           >Make this question required for participants</span
         >
       </label>
+      ${this.renderRandomizeOrderToggle(question, index, items.length)}
       <div class="description">
         <b>Optional:</b> Add items to ask several checkboxes under one title. A
         question with no items is a single checkbox.
@@ -536,6 +570,11 @@ export class SurveyEditor extends MobxLitElement {
               </span>
             </label>
           `}
+      ${this.renderRandomizeOrderToggle(
+        question,
+        index,
+        question.options.length,
+      )}
       ${this.renderQuestionConditionEditor(question, index)}
     `;
   }
@@ -876,6 +915,7 @@ export class SurveyEditor extends MobxLitElement {
       >
         Add allocation item
       </pr-button>
+      ${this.renderRandomizeOrderToggle(question, index, question.items.length)}
       ${this.renderQuestionConditionEditor(question, index)}
     `;
   }

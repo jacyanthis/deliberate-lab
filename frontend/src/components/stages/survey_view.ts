@@ -38,6 +38,7 @@ import {
   getCheckedItemIds,
   getRemainingCheckSelections,
   isMultipleChoiceImageQuestion,
+  getSurveyQuestionDisplayOrder,
   getVisibleSurveyQuestions,
   isQuestionVisible,
   isSurveyComplete,
@@ -217,12 +218,25 @@ export class SurveyView extends MobxLitElement {
           ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
         </div>
         <div class="checkbox-items">
-          ${(question.items ?? []).map((item) =>
+          ${this.displayOrder(question.items ?? [], question).map((item) =>
             this.renderCheckItem(question, item),
           )}
         </div>
       </div>
     `;
+  }
+
+  /** Items or options in the order this participant should see them. */
+  private displayOrder<T>(
+    items: readonly T[],
+    question: {randomizeOrder?: boolean; randomizeOrderKey?: string},
+  ): T[] {
+    return getSurveyQuestionDisplayOrder(
+      items,
+      question,
+      this.stage?.id ?? '',
+      this.participantService.profile?.publicId ?? '',
+    );
   }
 
   private renderCheckItem(question: CheckSurveyQuestion, item: CheckItem) {
@@ -363,7 +377,7 @@ export class SurveyView extends MobxLitElement {
           ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
         </div>
         <div class=${questionWrapperClasses}>
-          ${question.options.map((option) =>
+          ${this.displayOrder(question.options, question).map((option) =>
             this.renderRadioButton(option, question.id),
           )}
         </div>
@@ -409,7 +423,7 @@ export class SurveyView extends MobxLitElement {
           ?disabled=${this.participantService.disableStage}
           @change=${handleChange}
         >
-          ${question.options.map(
+          ${this.displayOrder(question.options, question).map(
             (option) => html`
               <md-select-option
                 value=${option.id}
@@ -613,7 +627,7 @@ export class SurveyView extends MobxLitElement {
         <div class=${titleClasses}>
           ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
         </div>
-        ${question.items.map((item) =>
+        ${this.displayOrder(question.items, question).map((item) =>
           this.renderAllocationItem(question, item, allocated),
         )}
         ${isExact
