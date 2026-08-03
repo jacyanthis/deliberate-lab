@@ -16,6 +16,9 @@ import {customElement, property} from 'lit/decorators.js';
 import {classMap} from 'lit/directives/class-map.js';
 
 import {
+  AllocationItem,
+  AllocationSurveyAnswer,
+  AllocationSurveyQuestion,
   CheckSurveyAnswer,
   CheckSurveyQuestion,
   MultipleChoiceDisplayType,
@@ -29,6 +32,8 @@ import {
   SurveyStageConfig,
   TextSurveyAnswer,
   TextSurveyQuestion,
+  formatAllocationValue,
+  getAllocationTotal,
   isMultipleChoiceImageQuestion,
   getVisibleSurveyQuestions,
   isQuestionVisible,
@@ -37,7 +42,10 @@ import {
 } from '@deliberation-lab/utils';
 
 import {unsafeHTML} from 'lit/directives/unsafe-html.js';
-import {convertMarkdownToHTML} from '../../shared/utils';
+import {
+  convertMarkdownToHTML,
+  pinAllocationSliderLabels,
+} from '../../shared/utils';
 import {core} from '../../core/core';
 import {ParticipantService} from '../../services/participant.service';
 import {ParticipantAnswerService} from '../../services/participant.answer';
@@ -55,6 +63,11 @@ export class SurveyView extends MobxLitElement {
   );
 
   @property() stage: SurveyStageConfig | undefined = undefined;
+
+  override updated() {
+    // An allocation slider shows its amount at all times
+    pinAllocationSliderLabels(this.renderRoot);
+  }
 
   override render() {
     if (!this.stage) {
@@ -135,6 +148,8 @@ export class SurveyView extends MobxLitElement {
         return this.renderScaleQuestion(question);
       case SurveyQuestionKind.TEXT:
         return this.renderTextQuestion(question);
+      case SurveyQuestionKind.ALLOCATION:
+        return this.renderAllocationQuestion(question);
       default:
         return nothing;
     }
@@ -512,6 +527,104 @@ export class SurveyView extends MobxLitElement {
         </div>
       </div>
     `;
+  }
+
+  private renderAllocationQuestion(question: AllocationSurveyQuestion) {
+    const answer = this.getAllocationAnswer(question);
+    const allocated = getAllocationTotal(question, answer);
+    const isExact = allocated === question.totalValue;
+
+    const titleClasses = classMap({required: !isExact});
+
+    return html`
+      <div class="question">
+        <div class=${titleClasses}>
+          ${unsafeHTML(convertMarkdownToHTML(question.questionTitle + '*'))}
+        </div>
+        ${question.items.map((item) =>
+          this.renderAllocationItem(question, item, allocated),
+        )}
+        ${isExact
+          ? html`<div class="allocation-total">
+              The current total is
+              ${formatAllocationValue(question.totalValue, question.unitText)}.
+              You can reduce the amount in one slider to increase it in another.
+            </div>`
+          : html`<div class="allocation-total required">
+              The current total is
+              ${formatAllocationValue(allocated, question.unitText)}. Please
+              distribute
+              ${formatAllocationValue(question.totalValue, question.unitText)}
+              to continue.
+            </div>`}
+      </div>
+    `;
+  }
+
+  private renderAllocationItem(
+    question: AllocationSurveyQuestion,
+    item: AllocationItem,
+    allocated: number,
+  ) {
+    const answer = this.getAllocationAnswer(question);
+    const value = answer?.allocationMap[item.id] ?? 0;
+    const stepSize = question.stepSize ?? 1;
+    // The amount this item can hold before the question runs out of budget
+    const cap = value + (question.totalValue - allocated);
+
+    const handleSliderChange = (e: Event) => {
+      if (!this.stage) return;
+      const slider = e.target as HTMLInputElement;
+      const capped = Math.min(Number(slider.value), cap);
+      if (capped !== Number(slider.value)) {
+        // Keep the slider in step with the stored value when it hits the cap
+        slider.value = capped.toString();
+      }
+      const allocationAnswer: AllocationSurveyAnswer = {
+        id: question.id,
+        kind: SurveyQuestionKind.ALLOCATION,
+        allocationMap: {...(answer?.allocationMap ?? {}), [item.id]: capped},
+      };
+      this.participantAnswerService.updateSurveyAnswer(
+        this.stage.id,
+        allocationAnswer,
+      );
+    };
+
+    const id = `${question.id}-${item.id}`;
+
+    return html`
+      <div class="allocation-item">
+        <label class="allocation-item-text" for=${id}>
+          ${unsafeHTML(convertMarkdownToHTML(item.text))}
+        </label>
+        <md-slider
+          id=${id}
+          min="0"
+          max=${question.totalValue}
+          step=${stepSize}
+          value=${value}
+          value-label=${formatAllocationValue(value, question.unitText)}
+          ticks
+          labeled
+          ?disabled=${this.participantService.disableStage}
+          @input=${handleSliderChange}
+        >
+        </md-slider>
+      </div>
+    `;
+  }
+
+  private getAllocationAnswer(question: AllocationSurveyQuestion) {
+    if (!this.stage) return undefined;
+    const answer = this.participantAnswerService.getSurveyAnswer(
+      this.stage.id,
+      question.id,
+    );
+    if (answer && answer.kind === SurveyQuestionKind.ALLOCATION) {
+      return answer;
+    }
+    return undefined;
   }
 
   private renderScaleRadioButton(question: ScaleSurveyQuestion, value: number) {

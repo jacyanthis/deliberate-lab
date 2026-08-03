@@ -220,4 +220,78 @@ describe('validateSurveyQuestions', () => {
       );
     }
   });
+  it('should pass on a valid allocation question', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q3',
+        kind: SurveyQuestionKind.ALLOCATION,
+        questionTitle: 'Divide the budget',
+        items: [
+          {id: 'item1', text: 'Item 1'},
+          {id: 'item2', text: 'Item 2'},
+        ],
+        totalValue: 100,
+        stepSize: 5,
+        unitText: '%',
+      },
+    ];
+    expect(validateSurveyQuestions(questions)).toEqual({valid: true});
+  });
+
+  it('should fail on allocation question with no items', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q3',
+        kind: SurveyQuestionKind.ALLOCATION,
+        questionTitle: 'Divide the budget',
+        items: [],
+        totalValue: 100,
+        stepSize: 1,
+        unitText: '',
+      },
+    ];
+    const res = validateSurveyQuestions(questions);
+    expect(res.valid).toBe(false);
+    if (!res.valid) {
+      expect(res.error).toContain('must have at least one item');
+    }
+  });
+
+  it('should fail on allocation question with a total value of zero', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q3',
+        kind: SurveyQuestionKind.ALLOCATION,
+        questionTitle: 'Divide the budget',
+        items: [{id: 'item1', text: 'Item 1'}],
+        totalValue: 0,
+        stepSize: 1,
+        unitText: '',
+      },
+    ];
+    const res = validateSurveyQuestions(questions);
+    expect(res.valid).toBe(false);
+    if (!res.valid) {
+      expect(res.error).toContain('must be an integer greater than 0');
+    }
+  });
+
+  it('should fail when the allocation step size does not divide the total', () => {
+    const questions: SurveyQuestion[] = [
+      {
+        id: 'q3',
+        kind: SurveyQuestionKind.ALLOCATION,
+        questionTitle: 'Divide the budget',
+        items: [{id: 'item1', text: 'Item 1'}],
+        totalValue: 100,
+        stepSize: 3,
+        unitText: '',
+      },
+    ];
+    const res = validateSurveyQuestions(questions);
+    expect(res.valid).toBe(false);
+    if (!res.valid) {
+      expect(res.error).toContain('must divide the total value (100) exactly');
+    }
+  });
 });

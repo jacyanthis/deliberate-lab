@@ -8,6 +8,9 @@ import {core} from '../../core/core';
 import {CohortService} from '../../services/cohort.service';
 import {getParticipantInlineDisplay} from '../../shared/participant.utils';
 import {
+  AllocationSurveyAnswer,
+  AllocationSurveyQuestion,
+  formatAllocationValue,
   CheckSurveyAnswer,
   MultipleChoiceSurveyAnswer,
   MultipleChoiceSurveyQuestion,
@@ -300,6 +303,20 @@ export class SurveyReveal extends MobxLitElement {
 
       case SurveyQuestionKind.SCALE:
         answerText = `${(answer as ScaleSurveyAnswer).value}`;
+        break;
+
+      case SurveyQuestionKind.ALLOCATION:
+        const allocationQuestion = question as AllocationSurveyQuestion;
+        const allocationAnswer = answer as AllocationSurveyAnswer;
+        answerText = allocationQuestion.items
+          .map(
+            (item) =>
+              `${item.text}: ${formatAllocationValue(
+                allocationAnswer.allocationMap[item.id] ?? 0,
+                allocationQuestion.unitText,
+              )}`,
+          )
+          .join(', ');
         break;
 
       default:

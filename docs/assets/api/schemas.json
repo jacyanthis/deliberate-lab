@@ -2230,6 +2230,9 @@
               },
               {
                 "$ref": "#/$defs/ScaleSurveyQuestion"
+              },
+              {
+                "$ref": "#/$defs/AllocationSurveyQuestion"
               }
             ]
           }
@@ -2639,6 +2642,75 @@
         }
       }
     },
+    "AllocationSurveyQuestion": {
+      "title": "AllocationSurveyQuestion",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "kind", "questionTitle", "items", "totalValue"],
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "const": "allocation",
+          "type": "string"
+        },
+        "questionTitle": {
+          "type": "string"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AllocationItem"
+          }
+        },
+        "totalValue": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "stepSize": {
+          "minimum": 1,
+          "type": ["null", "integer"]
+        },
+        "unitText": {
+          "type": ["null", "string"]
+        },
+        "condition": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "title": "Condition",
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ComparisonCondition"
+                },
+                {
+                  "$ref": "#/$defs/ConditionGroup"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "AllocationItem": {
+      "title": "AllocationItem",
+      "additionalProperties": false,
+      "type": "object",
+      "required": ["id", "text"],
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
     "SurveyStageConfig": {
       "title": "SurveyStageConfig",
       "additionalProperties": false,
@@ -2688,6 +2760,9 @@
               },
               {
                 "$ref": "#/$defs/ScaleSurveyQuestion"
+              },
+              {
+                "$ref": "#/$defs/AllocationSurveyQuestion"
               }
             ]
           }

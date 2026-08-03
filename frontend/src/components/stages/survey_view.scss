@@ -142,6 +142,29 @@
   }
 }
 
+.allocation-item {
+  @include common.flex-column;
+  gap: common.$spacing-small;
+  max-width: 500px;
+
+  .allocation-item-text {
+    @include typescale.label-medium;
+    color: var(--md-sys-color-on-surface);
+  }
+
+  md-slider {
+    width: 100%;
+    // Room above the slider for the value bubble, which is always shown, plus
+    // a gap between the bubble and the item it belongs to
+    margin-top: common.$spacing-xxl + common.$spacing-large;
+  }
+}
+
+.allocation-total {
+  @include typescale.label-medium;
+  font-weight: 500;
+}
+
 .slider-selected-value {
   @include common.flex-row-align-center;
   @include typescale.label-medium;
