@@ -1,4 +1,5 @@
 import {generateId} from '../shared';
+import {shuffleWithSeed} from '../utils/random.utils';
 import {
   Condition,
   evaluateCondition,
@@ -74,6 +75,12 @@ export interface CheckSurveyQuestion extends BaseSurveyQuestion {
   items?: CheckItem[];
   // How many items may be checked, or null for as many as the participant likes
   maxSelections?: number | null;
+  // Shuffle the display order per participant. Answers stay keyed by item ID,
+  // so only what the participant sees changes.
+  randomizeOrder?: boolean;
+  // Questions sharing a key shuffle identically for a given participant. Unset
+  // means the stage ID is the key, so each stage gets its own order.
+  randomizeOrderKey?: string;
 }
 
 export interface CheckItem {
@@ -87,6 +94,12 @@ export interface MultipleChoiceSurveyQuestion extends BaseSurveyQuestion {
   // ID of correct MultipleChoiceItem, or null if no correct answer
   correctAnswerId: string | null;
   displayType?: MultipleChoiceDisplayType;
+  // Shuffle the display order per participant. Answers stay keyed by option
+  // ID, so only what the participant sees changes.
+  randomizeOrder?: boolean;
+  // Questions sharing a key shuffle identically for a given participant. Unset
+  // means the stage ID is the key, so each stage gets its own order.
+  randomizeOrderKey?: string;
 }
 
 export interface MultipleChoiceItem {
@@ -112,6 +125,14 @@ export interface AllocationSurveyQuestion extends BaseSurveyQuestion {
   totalValue: number; // Amount that participants divide across the items
   stepSize: number; // Step size for each item slider (defaults to 1)
   unitText: string; // Text shown after each number, e.g. "%"
+  // Shuffle the display order per participant. Answers stay keyed by item ID,
+  // so only what the participant sees changes.
+  randomizeOrder?: boolean;
+  // Questions sharing a key shuffle identically for a given participant. Unset
+  // means the stage ID is the key, so each stage gets its own order. Give the
+  // questions of one round the same key to hold the order steady across that
+  // round's initial and follow-up surveys.
+  randomizeOrderKey?: string;
 }
 
 export interface AllocationItem {
@@ -608,4 +629,26 @@ export function isSurveyAnswerComplete(
       // All other answer types are complete as long as they exist
       return true;
   }
+}
+
+/**
+ * Display order for a question's items or options.
+ *
+ * Order is a presentation concern only: answers are stored against item IDs,
+ * so shuffling never moves data. The seed combines the participant with a key
+ * that defaults to the stage, which gives each participant a stable order that
+ * differs by round. Questions that should agree (a round's initial and
+ * follow-up surveys, say) share an explicit randomizeOrderKey.
+ */
+export function getSurveyQuestionDisplayOrder<T>(
+  items: readonly T[],
+  question: {randomizeOrder?: boolean; randomizeOrderKey?: string},
+  stageId: string,
+  participantId: string,
+): T[] {
+  if (!question.randomizeOrder || items.length < 2 || !participantId) {
+    return [...items];
+  }
+  const key = question.randomizeOrderKey || stageId;
+  return shuffleWithSeed(items, `${participantId}::${key}`);
 }
