@@ -616,6 +616,7 @@ class ConditionTargetReference(BaseModel):
     )
     stageId: Annotated[str, Field(min_length=1)]
     questionId: Annotated[str, Field(min_length=1)]
+    itemId: Annotated[str | None, Field(min_length=1)] = None
 
 
 class ConditionOperator(StrEnum):
@@ -623,9 +624,21 @@ class ConditionOperator(StrEnum):
     or_ = "or"
 
 
+class CheckItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    text: str
+
+
 class MultipleChoiceDisplayType(StrEnum):
     radio = "radio"
     dropdown = "dropdown"
+
+
+AllocationItem = CheckItem
 
 
 class TOSStageConfig(BaseModel):
@@ -1275,6 +1288,7 @@ class SurveyPerParticipantStageConfig(BaseModel):
         | CheckSurveyQuestion
         | MultipleChoiceSurveyQuestion
         | ScaleSurveyQuestion
+        | AllocationSurveyQuestion
     ]
     enableSelfSurvey: bool
 
@@ -1312,6 +1326,10 @@ class CheckSurveyQuestion(BaseModel):
     kind: Literal["check"] = "check"
     questionTitle: str
     isRequired: bool
+    items: list[CheckItem] | None = None
+    maxSelections: Annotated[int | None, Field(ge=1)] = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1326,6 +1344,8 @@ class MultipleChoiceSurveyQuestion(BaseModel):
     options: list[MultipleChoiceItem]
     correctAnswerId: str | None = None
     displayType: MultipleChoiceDisplayType | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1347,6 +1367,23 @@ class ScaleSurveyQuestion(BaseModel):
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
+class AllocationSurveyQuestion(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    kind: Literal["allocation"] = "allocation"
+    questionTitle: str
+    items: list[AllocationItem]
+    totalValue: Annotated[int, Field(ge=1)]
+    stepSize: Annotated[int | None, Field(ge=1)] = None
+    unitText: str | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
+    condition: ComparisonCondition | ConditionGroup | None = None
+
+
 class SurveyStageConfig(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -1363,6 +1400,7 @@ class SurveyStageConfig(BaseModel):
         | CheckSurveyQuestion
         | MultipleChoiceSurveyQuestion
         | ScaleSurveyQuestion
+        | AllocationSurveyQuestion
     ]
 
 
