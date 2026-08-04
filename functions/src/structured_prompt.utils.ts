@@ -135,26 +135,10 @@ export async function getStructuredPromptConfig(
       // leaves wordsPerMinute unset, which means a spawned agent answers with
       // no typing delay at all, so let the experiment supply chat settings for
       // agents it spawns rather than configures.
-      let fallbackPrompt =
+      const fallbackPrompt =
         stageManager.getDefaultParticipantStructuredPrompt(stage);
       if (!fallbackPrompt) {
         return fallbackPrompt;
-      }
-      // A representative (an agent standing in for a person, marked by its
-      // repPersonaBank flag) speaks from the represented person's interview,
-      // which arrives through its prompt context. The default prompt would
-      // additionally hand it every participant's survey answers via stage
-      // context, which the study withholds by design. Strip participant
-      // answers for representatives only; other agents keep the default.
-      if (user.agentConfig?.repPersonaBank) {
-        fallbackPrompt = {
-          ...fallbackPrompt,
-          prompt: fallbackPrompt.prompt.map((item) =>
-            item.type === PromptItemType.STAGE_CONTEXT
-              ? {...item, includeParticipantAnswers: false}
-              : item,
-          ),
-        };
       }
       // Chat settings only exist on chat-stage prompts, so the merge is
       // limited to those; other stage kinds return the fallback as is.

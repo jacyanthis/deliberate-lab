@@ -301,36 +301,6 @@ export async function createAgentChatMessageFromPrompt(
   // Unreachable: every path above returns.
 
   async function runAgentChatMessagePipeline(): Promise<boolean> {
-    // A group chat prompt describes the other participants, and agents spawned
-    // for the cohort claim their persona (and the bank data materialized with
-    // it) a moment after they are created. Building the prompt in that window
-    // yields a message written as though the others were not there, which a
-    // scripted agent spends as one of its numbered turns and cannot take back.
-    // Throwing here rather than returning puts it on the retry-until-deadline
-    // path, so the turn waits for the claims instead of being skipped. Only
-    // turn-based chats have that retry path, so the wait is scoped to them;
-    // free-form chats are left exactly as before.
-    if (
-      stage?.kind === StageKind.CHAT &&
-      (stage as ChatStageConfig).isTurnBased
-    ) {
-      const cohortAgents = await getFirestoreActiveParticipants(
-        experimentId,
-        cohortId,
-        null, // any stage: a spawned agent may not have entered this one yet
-        true, // agents only
-      );
-      const stillClaiming = cohortAgents.filter(
-        (agent) => agent.agentConfig?.needsPersonaGeneration,
-      );
-      if (stillClaiming.length > 0) {
-        throw new Error(
-          `[chat.agent] ${stillClaiming.length} agent(s) in cohort ` +
-            `${cohortId} have not claimed a persona yet; waiting before ` +
-            `${user.publicId} writes a message that would describe them`,
-        );
-      }
-    }
     // Check if this is an initial message request (empty triggerChatId)
     if (triggerChatId === '') {
       // Check if we've already sent an initial message for this user
@@ -1806,6 +1776,29 @@ async function sendInitialGroupChatMessages(
     stageId,
     false, // checkIsAgent = false to get ALL participants
   );
+
+  // Agents spawned for this cohort receive their persona a moment after they
+  // are created, whether it is claimed from a bank or generated. Until every
+  // one of them has it, the chat is still being set up: a prompt built now
+  // would describe them as taking part while saying nothing about them, and a
+  // turn spent on such a message cannot be taken back. Assign no turn and send
+  // nothing yet, which also holds the participant's setup banner in place; the
+  // last agent to become ready calls this again.
+  const agentsBeingPrepared = (
+    await getFirestoreActiveParticipants(
+      experimentId,
+      cohortId,
+      null, // any stage: a spawned agent may not have entered this one yet
+      true, // agents only
+    )
+  ).filter((agent) => agent.agentConfig?.needsPersonaGeneration);
+  if (agentsBeingPrepared.length > 0) {
+    console.log(
+      `[chat.agent] Group chat ${stageId} in cohort ${cohortId} is still being ` +
+        `set up: ${agentsBeingPrepared.length} agent(s) without a persona.`,
+    );
+    return;
+  }
 
   const allParticipantIds = allParticipants.map((p) => p.privateId);
 

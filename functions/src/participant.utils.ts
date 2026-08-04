@@ -1596,6 +1596,20 @@ export async function completeParticipantTransfer(
     const getParticipantRef = (id: string) =>
       app.firestore().doc(`experiments/${experimentId}/participants/${id}`);
 
+    // Agent participants configured for this experiment. Every agent spawned
+    // below takes its id from here, so the experimenter's prompts apply to it;
+    // with none configured each falls back to the stage default as before.
+    const agentParticipantsQuery = await app
+      .firestore()
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('agentParticipants')
+      .get();
+
+    const personas = agentParticipantsQuery.docs.map(
+      (doc) => doc.data() as AgentPersonaConfig,
+    );
+
     // Spawn the observer's representative agent (strictly for observer cohorts)
     if (participant.isObserver && participant.hasRepresentative) {
       const repAgentId = generateId();
@@ -1615,7 +1629,9 @@ export async function completeParticipantTransfer(
         name: repProfile.name,
         avatar: repProfile.avatar,
         agentConfig: {
-          agentId: repAgentId,
+          // Same configuration path as every other spawned agent, so what a
+          // representative is shown is the experimenter's choice.
+          agentId: personas[0]?.id ?? repAgentId,
           promptContext: `You are ${observerName}'s representative in this discussion. Represent ${observerName}'s perspective from their earlier responses rather than expressing your own independent opinions. When you speak, attribute the views to ${observerName} by name (for example, "${observerName} thinks" or "${observerName}'s view is") rather than voicing them as your own. Ensure you properly separate every paragraph with one empty line in between.`,
           modelSettings:
             experiment.spawnedAgentModelSettings ??
@@ -1642,17 +1658,6 @@ export async function completeParticipantTransfer(
     }
 
     // Spawn the other virtual AI agents directly inside targetCohortId
-    const agentParticipantsQuery = await app
-      .firestore()
-      .collection('experiments')
-      .doc(experimentId)
-      .collection('agentParticipants')
-      .get();
-
-    const personas = agentParticipantsQuery.docs.map(
-      (doc) => doc.data() as AgentPersonaConfig,
-    );
-
     for (let i = 0; i < numOtherAgents; i++) {
       const agentId = generateId();
       const agentTimestamps = createProgressTimestamps();
