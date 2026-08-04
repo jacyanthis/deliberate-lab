@@ -37,6 +37,10 @@ import {
   SYSTEM_VARIABLE_NAMESPACE,
   injectScratchpadField,
   rewriteDescriptionsForRequiredResponse,
+  ChatStagePublicData,
+  TURN_CYCLE_STATUS_PLACEHOLDER,
+  getTurnCycleInfo,
+  substituteTurnCycleStatus,
 } from '@deliberation-lab/utils';
 import {
   getAgentMediatorPrompt,
@@ -66,6 +70,25 @@ export function containsScratchpadPlaceholder(items: PromptItem[]): boolean {
       return (
         (group.title?.includes('{{_scratchpad}}') ?? false) ||
         containsScratchpadPlaceholder(group.items ?? [])
+      );
+    }
+    return false;
+  });
+}
+
+// Recursively check whether `{{_turnCycleStatus}}` appears in prompt items.
+function containsTurnCyclePlaceholder(items: PromptItem[]): boolean {
+  return items.some((item) => {
+    if (item.type === PromptItemType.TEXT) {
+      return (
+        (item as TextPromptItem).text?.includes(
+          TURN_CYCLE_STATUS_PLACEHOLDER,
+        ) ?? false
+      );
+    }
+    if (item.type === PromptItemType.GROUP) {
+      return containsTurnCyclePlaceholder(
+        (item as PromptItemGroup).items ?? [],
       );
     }
     return false;
@@ -875,6 +898,33 @@ async function processPromptItems(
   const scratchpadBlock = reasoningText;
   valueMap['_scratchpad'] = '';
 
+  // Resolve {{_turnCycleStatus}} where the experimenter placed it: the cycle
+  // line for a turn-based group chat with a message cap, empty text otherwise.
+  let turnCycleInfo: {currentCycle: number; totalCycles: number} | null = null;
+  if (stageKind === StageKind.CHAT) {
+    const stage = (promptData.data[stageId]?.stage ??
+      (await getFirestoreStage(experiment.id, stageId))) as
+      | ChatStageConfig
+      | undefined;
+    const usesTurnCycle =
+      containsTurnCyclePlaceholder(promptItems) ||
+      (stage?.additionalParticipantInstructions?.includes(
+        TURN_CYCLE_STATUS_PLACEHOLDER,
+      ) ??
+        false);
+    if (usesTurnCycle && stage?.isTurnBased) {
+      const publicData = ((promptData.data[stageId]?.publicData as
+        | ChatStagePublicData
+        | undefined) ??
+        (await getFirestoreStagePublicData(
+          experiment.id,
+          cohortId,
+          stageId,
+        ))) as ChatStagePublicData | undefined;
+      turnCycleInfo = getTurnCycleInfo(publicData, stage);
+    }
+  }
+
   for (const [itemIndex, promptItem] of promptItems.entries()) {
     // Check condition if present (only for private chat contexts)
     if (
@@ -892,7 +942,10 @@ async function processPromptItems(
       case PromptItemType.TEXT: {
         // Resolve template variables in text prompt items
         const resolvedText = resolveTemplateVariables(
-          substituteScratchpad(promptItem.text, scratchpadBlock),
+          substituteTurnCycleStatus(
+            substituteScratchpad(promptItem.text, scratchpadBlock),
+            turnCycleInfo,
+          ),
           variableDefinitions,
           valueMap,
         );
@@ -925,7 +978,10 @@ async function processPromptItems(
           ?.additionalParticipantInstructions;
         if (extraParticipantInstr) {
           items.push(
-            substituteScratchpad(extraParticipantInstr, scratchpadBlock),
+            substituteTurnCycleStatus(
+              substituteScratchpad(extraParticipantInstr, scratchpadBlock),
+              turnCycleInfo,
+            ),
           );
         }
         break;
