@@ -10,8 +10,6 @@ import {
   extractChatMediatorStructuredFields,
   getStructuredOutput,
   injectScratchpadField,
-  getTurnCycleInfo,
-  getTurnCycleStatusForPrompt,
   MediatorProfileExtended,
   ModelResponse,
   ModelResponseStatus,
@@ -754,7 +752,7 @@ export async function getAgentChatMessage(
 
   // Use provided participant IDs for prompt context
   // Get structured prompt
-  let structuredPrompt = await getPromptFromConfig(
+  const structuredPrompt = await getPromptFromConfig(
     experimentId,
     cohortId,
     stageId,
@@ -762,22 +760,6 @@ export async function getAgentChatMessage(
     promptConfig,
     participantIds, // Pass participant IDs to limit context scope (e.g., for private chats)
   );
-
-  // For a turn-based group chat with a fixed message cap, tell the agent
-  // (participant or mediator) which cycle it is in and how many remain, so it
-  // can pace its contribution. No-op when not turn-based or there is no cap.
-  if (isTurnBasedGroupChat) {
-    const cycleInfo = getTurnCycleInfo(
-      chatPublicData,
-      stage as ChatStageConfig,
-    );
-    if (cycleInfo) {
-      structuredPrompt = `${structuredPrompt.replace(/\n+$/, '')}\n\n${getTurnCycleStatusForPrompt(
-        cycleInfo.currentCycle,
-        cycleInfo.totalCycles,
-      )}`;
-    }
-  }
 
   // Prepare prompt - either message-based or traditional string
   let prompt: string | ModelMessage[];
