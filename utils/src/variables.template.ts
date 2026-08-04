@@ -23,13 +23,15 @@ export const INTERNAL_VARIABLES: ReadonlySet<string> = new Set([
   '_profileAvatar',
   '_profilePronouns',
   '_profileId',
+  '_turnCycleStatus',
 ]);
 export type InternalVariableName =
   | '_scratchpad'
   | '_profileName'
   | '_profileAvatar'
   | '_profilePronouns'
-  | '_profileId';
+  | '_profileId'
+  | '_turnCycleStatus';
 
 /**
  * Value-map entries for the internal profile variables, so participant-facing
