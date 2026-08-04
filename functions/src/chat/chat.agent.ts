@@ -170,6 +170,8 @@ export async function createAgentChatMessageFromPrompt(
     return false;
   }
 
+  const typingStartMs = Date.now();
+
   // Stage (in order to determine stage kind)
   const stage = await getFirestoreStage(experimentId, stageId);
   if (!stage) {
@@ -284,6 +286,7 @@ export async function createAgentChatMessageFromPrompt(
         triggerChatId,
         outcome,
         promptConfig.chatSettings,
+        typingStartMs,
       );
     } else {
       await sendAgentGroupChatMessage(
@@ -293,6 +296,7 @@ export async function createAgentChatMessageFromPrompt(
         triggerChatId,
         outcome,
         promptConfig.chatSettings,
+        typingStartMs,
       );
     }
     return true;
@@ -499,6 +503,7 @@ export async function createAgentChatMessageFromPrompt(
         triggerChatId,
         message,
         promptConfig.chatSettings,
+        typingStartMs,
       );
     } else {
       await sendAgentGroupChatMessage(
@@ -508,6 +513,7 @@ export async function createAgentChatMessageFromPrompt(
         triggerChatId,
         message,
         promptConfig.chatSettings,
+        typingStartMs,
       );
     }
 
@@ -1450,13 +1456,13 @@ export async function sendAgentGroupChatMessage(
   triggerChatId: string, // ID of chat that is being responded to
   chatMessage: ChatMessage,
   chatSettings: AgentChatSettings,
+  typingStartMs?: number,
 ) {
   const capStage = await getFirestoreStage(experimentId, stageId);
   const isTurnBasedGroup =
     capStage?.kind === StageKind.CHAT &&
     (capStage as ChatStageConfig).isTurnBased === true;
 
-  // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
   if (chatSettings.wordsPerMinute && !chatMessage.isScratchpadOnly) {
     // A turn-based chat's first message posts immediately.
@@ -1471,7 +1477,11 @@ export async function sendAgentGroupChatMessage(
         )
       ).every((m) => m.type === UserType.SYSTEM);
     if (!isFirstMessage) {
-      await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
+      await awaitTypingDelay(
+        chatMessage.message,
+        chatSettings.wordsPerMinute,
+        typingStartMs ? Date.now() - typingStartMs : 0,
+      );
     }
   }
 
@@ -1588,13 +1598,13 @@ export async function sendAgentPrivateChatMessage(
   triggerChatId: string, // ID of chat that is being responded to
   chatMessage: ChatMessage,
   chatSettings: AgentChatSettings,
+  typingStartMs?: number,
 ) {
   const privateStage = await getFirestoreStage(experimentId, stageId);
   const isTurnBasedPrivate =
     privateStage?.kind === StageKind.PRIVATE_CHAT &&
     (privateStage as PrivateChatStageConfig).isTurnBasedChatGroupStyle === true;
 
-  // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
   if (chatSettings.wordsPerMinute && !chatMessage.isScratchpadOnly) {
     // A turn-based chat's first message posts immediately.
@@ -1609,7 +1619,11 @@ export async function sendAgentPrivateChatMessage(
         )
       ).every((m) => m.type === UserType.SYSTEM);
     if (!isFirstMessage) {
-      await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
+      await awaitTypingDelay(
+        chatMessage.message,
+        chatSettings.wordsPerMinute,
+        typingStartMs ? Date.now() - typingStartMs : 0,
+      );
     }
   }
 

@@ -171,8 +171,12 @@ export function convertUnifiedTimestampToDateTime(timestamp: UnifiedTimestamp) {
 export async function awaitTypingDelay(
   message: string,
   wordsPerMinute: number,
+  elapsedMs = 0,
 ): Promise<void> {
-  const delay = getTypingDelayInMilliseconds(message, wordsPerMinute);
+  const delay = Math.max(
+    getTypingDelayInMilliseconds(message, wordsPerMinute) - elapsedMs,
+    0,
+  );
   console.log(
     `Waiting ${(delay / 1000).toFixed(2)} seconds to simulate delay.`,
   );
