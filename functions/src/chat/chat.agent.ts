@@ -76,6 +76,8 @@ export async function createAgentChatMessageFromPrompt(
     return false;
   }
 
+  const typingStartMs = Date.now();
+
   // Stage (in order to determine stage kind)
   const stage = await getFirestoreStage(experimentId, stageId);
   if (!stage) {
@@ -254,6 +256,7 @@ export async function createAgentChatMessageFromPrompt(
       triggerChatId,
       message,
       promptConfig.chatSettings,
+      typingStartMs,
     );
   } else {
     await sendAgentGroupChatMessage(
@@ -263,6 +266,7 @@ export async function createAgentChatMessageFromPrompt(
       triggerChatId,
       message,
       promptConfig.chatSettings,
+      typingStartMs,
     );
   }
 
@@ -799,11 +803,15 @@ export async function sendAgentGroupChatMessage(
   triggerChatId: string, // ID of chat that is being responded to
   chatMessage: ChatMessage,
   chatSettings: AgentChatSettings,
+  typingStartMs?: number,
 ) {
-  // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
   if (chatSettings.wordsPerMinute) {
-    await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
+    await awaitTypingDelay(
+      chatMessage.message,
+      chatSettings.wordsPerMinute,
+      typingStartMs ? Date.now() - typingStartMs : 0,
+    );
   }
 
   // Check if the conversation has moved on,
@@ -874,11 +882,15 @@ export async function sendAgentPrivateChatMessage(
   triggerChatId: string, // ID of chat that is being responded to
   chatMessage: ChatMessage,
   chatSettings: AgentChatSettings,
+  typingStartMs?: number,
 ) {
-  // TODO: Decrease typing delay to account for LLM API call latencies?
   // TODO: Don't send message if conversation continues while agent is typing?
   if (chatSettings.wordsPerMinute) {
-    await awaitTypingDelay(chatMessage.message, chatSettings.wordsPerMinute);
+    await awaitTypingDelay(
+      chatMessage.message,
+      chatSettings.wordsPerMinute,
+      typingStartMs ? Date.now() - typingStartMs : 0,
+    );
   }
 
   // Check if the conversation has moved on,
