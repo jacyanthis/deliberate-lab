@@ -163,6 +163,20 @@ class AgentModelSettings(BaseModel):
     modelName: str
 
 
+class AgentChatSettings(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    wordsPerMinute: float | None = None
+    minMessagesBeforeResponding: int
+    canSelfTriggerCalls: bool
+    maxResponses: int | None = None
+    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
+    minNumberOfMessages: Annotated[int | None, Field(ge=0)] = None
+    initialMessage: str
+
+
 class StageTextConfig(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -815,20 +829,6 @@ class StructuredOutputDataType(StrEnum):
     ENUM = "ENUM"
 
 
-class AgentChatSettings(BaseModel):
-    model_config = ConfigDict(
-        extra="forbid",
-        populate_by_name=True,
-    )
-    wordsPerMinute: float | None = None
-    minMessagesBeforeResponding: int
-    canSelfTriggerCalls: bool
-    maxResponses: int | None = None
-    maxNumberOfMessages: Annotated[int | None, Field(ge=1)] = None
-    minNumberOfMessages: Annotated[int | None, Field(ge=0)] = None
-    initialMessage: str
-
-
 class StageKind(StrEnum):
     info = "info"
     tos = "tos"
@@ -1141,6 +1141,7 @@ class Experiment(BaseModel):
     timeoutMessageLimit: float | None = None
     useNeutralTimeoutResponses: bool | None = None
     spawnedAgentModelSettings: AgentModelSettings | None = None
+    spawnedAgentChatSettings: AgentChatSettings | None = None
 
 
 class ExperimentTemplate(BaseModel):
@@ -1327,6 +1328,8 @@ class CheckSurveyQuestion(BaseModel):
     isRequired: bool
     items: list[CheckItem] | None = None
     maxSelections: Annotated[int | None, Field(ge=1)] = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1341,6 +1344,8 @@ class MultipleChoiceSurveyQuestion(BaseModel):
     options: list[MultipleChoiceItem]
     correctAnswerId: str | None = None
     displayType: MultipleChoiceDisplayType | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
@@ -1374,6 +1379,8 @@ class AllocationSurveyQuestion(BaseModel):
     totalValue: Annotated[int, Field(ge=1)]
     stepSize: Annotated[int | None, Field(ge=1)] = None
     unitText: str | None = None
+    randomizeOrder: bool | None = None
+    randomizeOrderKey: str | None = None
     condition: ComparisonCondition | ConditionGroup | None = None
 
 
