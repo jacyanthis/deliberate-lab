@@ -104,6 +104,10 @@ export interface Experiment {
   // to the built-in prompt default, whose wordsPerMinute is unset, so without
   // this they answer with no typing delay at all. Unset keeps that behavior.
   spawnedAgentChatSettings?: AgentChatSettings | null;
+  // Framing given to every representative agent at spawn, telling it whose
+  // views it speaks for. {{name}} resolves to the represented person's display
+  // name. Unset uses REPRESENTATIVE_PROMPT_CONTEXT.
+  representativePromptContext?: string | null;
 }
 
 /** Experiment template (used to load experiments). */
@@ -163,6 +167,7 @@ export function createExperimentConfig(
     cohortDefinitions: config.cohortDefinitions,
     spawnedAgentModelSettings: config.spawnedAgentModelSettings ?? null,
     spawnedAgentChatSettings: config.spawnedAgentChatSettings ?? null,
+    representativePromptContext: config.representativePromptContext ?? null,
     timeoutMessageLimit: config.timeoutMessageLimit,
     useNeutralTimeoutResponses: config.useNeutralTimeoutResponses,
   };
