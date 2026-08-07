@@ -77,9 +77,9 @@ export class ChatPanel extends MobxLitElement {
 
     return html`
       <div
-        class="side-layout ${showTextNotes ? 'with-text-notes' : ''} ${observerPresent
-          ? 'wide'
-          : ''}"
+        class="side-layout ${showTextNotes
+          ? 'with-text-notes'
+          : ''} ${observerPresent ? 'wide' : ''}"
       >
         ${showTextNotes
           ? html`
