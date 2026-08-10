@@ -36,6 +36,42 @@ import {convertTimestamps} from './data.utils';
 export interface GetExperimentDownloadOptions {
   /** Whether to include participant, cohort, and alert data. Defaults to true. */
   includeParticipantData?: boolean;
+  /**
+   * Assemble participants and cohorts a batch at a time instead of one at a
+   * time, and skip the per-stage reads that cannot hold anything. Off by
+   * default: the download is the same either way, so this only matters once an
+   * experiment is large enough for the one-at-a-time walk to be slow.
+   */
+  fast?: boolean;
+}
+
+/**
+ * How many participants or cohorts the fast path has in flight at once. Small
+ * enough to stay well inside the client's connection limits, large enough that
+ * the round trips stop being the cost.
+ */
+const FAST_BATCH_SIZE = 25;
+
+/** Run `work` over `items`, `size` at a time, keeping the order of the input. */
+async function inBatches<Item, Result>(
+  items: Item[],
+  size: number,
+  work: (item: Item) => Promise<Result>,
+): Promise<Result[]> {
+  if (size <= 1) {
+    const results: Result[] = [];
+    for (const item of items) {
+      results.push(await work(item));
+    }
+    return results;
+  }
+  const results: Result[] = [];
+  for (let index = 0; index < items.length; index += size) {
+    results.push(
+      ...(await Promise.all(items.slice(index, index + size).map(work))),
+    );
+  }
+  return results;
 }
 
 /**
@@ -51,7 +87,8 @@ export async function getExperimentDownload(
   experimentId: string,
   options: GetExperimentDownloadOptions = {},
 ): Promise<ExperimentDownload | null> {
-  const {includeParticipantData = true} = options;
+  const {includeParticipantData = true, fast = false} = options;
+  const batchSize = fast ? FAST_BATCH_SIZE : 1;
 
   // Get experiment config from experimentId
   const experimentConfig = (
@@ -174,78 +211,105 @@ export async function getExperimentDownload(
         .collection('participants')
         .get()
     ).docs.map((doc) => doc.data() as ParticipantProfileExtended);
-    for (const profile of profiles) {
-      // Create new ParticipantDownload
-      const participantDownload = createParticipantDownload(profile);
+    // Stages that can hold in-chat thoughts or private-chat messages, in the
+    // experiment's own stage order so the download reads the same either way.
+    // The one-at-a-time path keeps asking every stage, as it always has.
+    const stageKinds = new Map(
+      stageConfigs.map((stage) => [stage.id, stage.kind]),
+    );
+    const conversationStageIds = (experimentConfig.stageIds || []).filter(
+      (stageId) =>
+        stageKinds.get(stageId) === StageKind.CHAT ||
+        stageKinds.get(stageId) === StageKind.PRIVATE_CHAT,
+    );
 
-      // For each stage answer, add to ParticipantDownload map
-      const stageAnswers = (
-        await firestore
-          .collection('experiments')
-          .doc(experimentId)
-          .collection('participants')
-          .doc(profile.privateId)
-          .collection('stageData')
-          .get()
-      ).docs.map((doc) => doc.data() as StageParticipantAnswer);
-      for (const stage of stageAnswers) {
-        participantDownload.answerMap[stage.id] = stage;
-      }
+    const participantDownloads = await inBatches(
+      profiles,
+      batchSize,
+      async (profile) => {
+        // Create new ParticipantDownload
+        const participantDownload = createParticipantDownload(profile);
 
-      // Fetch thoughts for all stages of this participant in parallel
-      const stageIdsWithThoughts = experimentConfig.stageIds || [];
-      const thoughtsQueries = stageIdsWithThoughts.map(async (stageId) => {
-        const thoughtsList = (
+        // For each stage answer, add to ParticipantDownload map
+        const stageAnswers = (
           await firestore
             .collection('experiments')
             .doc(experimentId)
             .collection('participants')
             .doc(profile.privateId)
             .collection('stageData')
-            .doc(stageId)
-            .collection('thoughts')
-            .orderBy('timestamp', 'asc')
             .get()
-        ).docs.map((thoughtDoc) => thoughtDoc.data() as ParticipantThought);
-
-        return {stageId, thoughtsList};
-      });
-
-      const thoughtsResults = await Promise.all(thoughtsQueries);
-      for (const {stageId, thoughtsList} of thoughtsResults) {
-        if (thoughtsList.length > 0) {
-          participantDownload.thoughtMap[stageId] = thoughtsList;
+        ).docs.map((doc) => doc.data() as StageParticipantAnswer);
+        for (const stage of stageAnswers) {
+          participantDownload.answerMap[stage.id] = stage;
         }
-      }
 
-      // Fetch private-chat (e.g. interview) messages for all stages in
-      // parallel. Private chats live in a per-participant subcollection and
-      // were previously excluded from the download, so interviews could not be
-      // recovered from the export.
-      const privateChatQueries = stageIdsWithThoughts.map(async (stageId) => {
-        const messages = (
-          await firestore
-            .collection('experiments')
-            .doc(experimentId)
-            .collection('participants')
-            .doc(profile.privateId)
-            .collection('stageData')
-            .doc(stageId)
-            .collection('privateChats')
-            .orderBy('timestamp', 'asc')
-            .get()
-        ).docs.map((chatDoc) => chatDoc.data() as ChatMessage);
-        return {stageId, messages};
-      });
-      const privateChatResults = await Promise.all(privateChatQueries);
-      for (const {stageId, messages} of privateChatResults) {
-        if (messages.length > 0) {
-          participantDownload.privateChatMap[stageId] = messages;
+        // Spawned agents never hold thoughts or private chats, so the fast path
+        // does not ask for theirs.
+        const isAgent = Boolean(profile.agentConfig);
+        const stageIdsWithThoughts = fast
+          ? isAgent
+            ? []
+            : conversationStageIds
+          : experimentConfig.stageIds || [];
+        const thoughtsQueries = stageIdsWithThoughts.map(async (stageId) => {
+          const thoughtsList = (
+            await firestore
+              .collection('experiments')
+              .doc(experimentId)
+              .collection('participants')
+              .doc(profile.privateId)
+              .collection('stageData')
+              .doc(stageId)
+              .collection('thoughts')
+              .orderBy('timestamp', 'asc')
+              .get()
+          ).docs.map((thoughtDoc) => thoughtDoc.data() as ParticipantThought);
+
+          return {stageId, thoughtsList};
+        });
+
+        const thoughtsResults = await Promise.all(thoughtsQueries);
+        for (const {stageId, thoughtsList} of thoughtsResults) {
+          if (thoughtsList.length > 0) {
+            participantDownload.thoughtMap[stageId] = thoughtsList;
+          }
         }
-      }
 
-      // Add ParticipantDownload to ExperimentDownload
-      experimentDownload.participantMap[profile.publicId] = participantDownload;
+        // Fetch private-chat (e.g. interview) messages for all stages in
+        // parallel. Private chats live in a per-participant subcollection and
+        // were previously excluded from the download, so interviews could not be
+        // recovered from the export.
+        const privateChatQueries = stageIdsWithThoughts.map(async (stageId) => {
+          const messages = (
+            await firestore
+              .collection('experiments')
+              .doc(experimentId)
+              .collection('participants')
+              .doc(profile.privateId)
+              .collection('stageData')
+              .doc(stageId)
+              .collection('privateChats')
+              .orderBy('timestamp', 'asc')
+              .get()
+          ).docs.map((chatDoc) => chatDoc.data() as ChatMessage);
+          return {stageId, messages};
+        });
+        const privateChatResults = await Promise.all(privateChatQueries);
+        for (const {stageId, messages} of privateChatResults) {
+          if (messages.length > 0) {
+            participantDownload.privateChatMap[stageId] = messages;
+          }
+        }
+
+        return participantDownload;
+      },
+    );
+    for (const [index, profile] of profiles.entries()) {
+      // Added in the order the profiles came back, so the download reads the
+      // same whichever path built it.
+      experimentDownload.participantMap[profile.publicId] =
+        participantDownloads[index];
     }
 
     // For each cohort, add CohortDownload
@@ -256,42 +320,58 @@ export async function getExperimentDownload(
         .collection('cohorts')
         .get()
     ).docs.map((cohort) => cohort.data() as CohortConfig);
-    for (const cohort of cohorts) {
-      // Create new CohortDownload
-      const cohortDownload = createCohortDownload(cohort);
+    const cohortDownloads = await inBatches(
+      cohorts,
+      batchSize,
+      async (cohort) => {
+        // Create new CohortDownload
+        const cohortDownload = createCohortDownload(cohort);
 
-      // For each public stage data, add to CohortDownload
-      const publicStageData = (
-        await firestore
-          .collection('experiments')
-          .doc(experimentId)
-          .collection('cohorts')
-          .doc(cohort.id)
-          .collection('publicStageData')
-          .get()
-      ).docs.map((doc) => doc.data() as StagePublicData);
-      for (const data of publicStageData) {
-        cohortDownload.dataMap[data.id] = data;
-        // If chat stage, add list of chat messages to CohortDownload
-        if (data.kind === StageKind.CHAT) {
-          const chatList = (
-            await firestore
-              .collection('experiments')
-              .doc(experimentId)
-              .collection('cohorts')
-              .doc(cohort.id)
-              .collection('publicStageData')
-              .doc(data.id)
-              .collection('chats')
-              .orderBy('timestamp', 'asc')
-              .get()
-          ).docs.map((doc) => doc.data() as ChatMessage);
-          cohortDownload.chatMap[data.id] = chatList;
+        // For each public stage data, add to CohortDownload
+        const publicStageData = (
+          await firestore
+            .collection('experiments')
+            .doc(experimentId)
+            .collection('cohorts')
+            .doc(cohort.id)
+            .collection('publicStageData')
+            .get()
+        ).docs.map((doc) => doc.data() as StagePublicData);
+        const chatLists = await inBatches(
+          publicStageData,
+          batchSize,
+          async (data) => {
+            // If chat stage, add list of chat messages to CohortDownload
+            if (data.kind !== StageKind.CHAT) {
+              return null;
+            }
+            return (
+              await firestore
+                .collection('experiments')
+                .doc(experimentId)
+                .collection('cohorts')
+                .doc(cohort.id)
+                .collection('publicStageData')
+                .doc(data.id)
+                .collection('chats')
+                .orderBy('timestamp', 'asc')
+                .get()
+            ).docs.map((doc) => doc.data() as ChatMessage);
+          },
+        );
+        for (const [index, data] of publicStageData.entries()) {
+          cohortDownload.dataMap[data.id] = data;
+          const chatList = chatLists[index];
+          if (chatList) {
+            cohortDownload.chatMap[data.id] = chatList;
+          }
         }
-      }
 
-      // Add CohortDownload to ExperimentDownload
-      experimentDownload.cohortMap[cohort.id] = cohortDownload;
+        return cohortDownload;
+      },
+    );
+    for (const [index, cohort] of cohorts.entries()) {
+      experimentDownload.cohortMap[cohort.id] = cohortDownloads[index];
     }
 
     // Add alerts to ExperimentDownload
