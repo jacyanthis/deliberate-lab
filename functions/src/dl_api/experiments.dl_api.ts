@@ -471,6 +471,10 @@ export async function deleteExperiment(
 /**
  * Export experiment data
  * Returns comprehensive ExperimentDownload structure with all related data
+ *
+ * `?fast=true` opts in to assembling the download a batch at a time. The
+ * result is the same; it is worth asking for once an experiment is large
+ * enough that the one-at-a-time walk runs into the request timeout.
  */
 export async function exportExperimentData(
   req: DeliberateLabAPIRequest,
@@ -491,9 +495,11 @@ export async function exportExperimentData(
   await verifyExperimentAccess(experimentId, experimenterId);
 
   // Use the shared function to get full experiment data
+  const fast = req.query.fast === 'true' || req.query.fast === '1';
   const experimentDownload = await getExperimentDownload(
     app.firestore(),
     experimentId,
+    {fast},
   );
 
   if (!experimentDownload) {
