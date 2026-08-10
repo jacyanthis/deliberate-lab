@@ -101,6 +101,9 @@ export const ExperimentTemplateSchema = Type.Object(
         spawnedAgentChatSettings: Type.Optional(
           Type.Union([AgentChatSettingsData, Type.Null()]),
         ),
+        representativePromptContext: Type.Optional(
+          Type.Union([Type.String(), Type.Null()]),
+        ),
       },
       strict,
     ),

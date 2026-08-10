@@ -28,6 +28,7 @@ import {
   sanitizeRawResponseForLogging,
   shuffleWithSeed,
   Experiment,
+  ParticipantProfileBase,
   rewriteDescriptionsForRequiredResponse,
 } from '@deliberation-lab/utils';
 import {Timestamp} from 'firebase-admin/firestore';
@@ -108,6 +109,38 @@ async function getPrivateChatRepProfileOverride(
     return null;
   }
   return getRepresentativeProfile(String(human.name || human.publicId));
+}
+
+/** Apply a representative override, when there is one, to a sender profile. */
+function withRepProfile(
+  profile: ParticipantProfileBase,
+  override: {name: string; avatar: string} | null,
+): ParticipantProfileBase {
+  if (!override) return profile;
+  return {...profile, name: override.name, avatar: override.avatar};
+}
+
+/**
+ * Sender profile for a message written into a private chat: the name the
+ * participant sees for that speaker. A mediator interviewing someone who has a
+ * representative speaks as that representative, so every message it writes,
+ * error messages included, carries that name and not its own.
+ */
+export async function getPrivateChatSenderProfile(
+  experimentId: string,
+  stage: StageConfig,
+  participantIds: string[],
+  user: ParticipantProfileExtended | MediatorProfileExtended,
+) {
+  return withRepProfile(
+    createParticipantProfileBase(user),
+    await getPrivateChatRepProfileOverride(
+      experimentId,
+      stage,
+      participantIds,
+      user,
+    ),
+  );
 }
 
 // Fast-failing transient gRPC status codes for which a Firestore write is worth
@@ -279,6 +312,9 @@ export async function createAgentChatMessageFromPrompt(
       if (!privateChatParticipantId) {
         return false;
       }
+      // Same sender name as every other message in this chat: the timeout
+      // message must not arrive under the mediator's own name.
+      outcome.profile = withRepProfile(outcome.profile, repProfileOverride);
       await sendAgentPrivateChatMessage(
         experimentId,
         privateChatParticipantId,
@@ -488,13 +524,9 @@ export async function createAgentChatMessageFromPrompt(
         );
         return false;
       }
-      if (repProfileOverride && message) {
+      if (message) {
         // Present the mediator as the participant's representative.
-        message.profile = {
-          ...message.profile,
-          name: repProfileOverride.name,
-          avatar: repProfileOverride.avatar,
-        };
+        message.profile = withRepProfile(message.profile, repProfileOverride);
       }
       await sendAgentPrivateChatMessage(
         experimentId,
@@ -666,12 +698,6 @@ export async function getAgentChatMessage(
         retryTimedOut: false,
         deadlineReached: false,
       };
-    }
-    // Quiz pause: if the chat is paused for a quiz, an agent that began its
-    // turn before the pause must not post. The turn resumes when the
-    // participant submits.
-    if (chatPublicData && (chatPublicData.quizPauseCheckpoint ?? 0) > 0) {
-      return {message: null, success: true, retryTimedOut: false};
     }
     // Quiz pause: if the chat is paused for a quiz, an agent that began its
     // turn before the pause must not post. The turn resumes when the
