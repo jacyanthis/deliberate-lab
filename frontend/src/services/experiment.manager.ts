@@ -497,6 +497,12 @@ export class ExperimentManager extends Service {
     );
   }
 
+  /** Whether the address asked for the experiment to load without its logs. */
+  @computed get ignoreLogs() {
+    const value = this.sp.routerService.activeRoute.params['ignoreLogs'];
+    return value !== undefined && value !== false && value !== 'false';
+  }
+
   /** Set of ModelResponseStatus values that exist in the current logs. */
   @computed get logStatusesInData(): Set<ModelResponseStatus> {
     const statuses = new Set<ModelResponseStatus>();
@@ -704,28 +710,37 @@ export class ExperimentManager extends Service {
       ),
     );
 
-    // Subscribe to logs
-    this.unsubscribe.push(
-      onSnapshot(
-        collection(
-          this.sp.firebaseService.firestore,
-          'experiments',
-          id,
-          'logs',
+    // Subscribe to logs, unless the address asks us not to. Every model call
+    // is stored here with its full prompt and response, so on a large study
+    // this collection is far bigger than everything else the page loads and it
+    // keeps growing while the study runs. Opening the experiment with
+    // `?ignoreLogs` leaves it alone; the log page then reports that it holds
+    // nothing rather than pretending the study made no calls.
+    if (this.ignoreLogs) {
+      this.isLogsLoading = false;
+    } else {
+      this.unsubscribe.push(
+        onSnapshot(
+          collection(
+            this.sp.firebaseService.firestore,
+            'experiments',
+            id,
+            'logs',
+          ),
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'removed') {
+                delete this.logMap[change.doc.id];
+              } else {
+                const data = change.doc.data() as LogEntry;
+                this.logMap[change.doc.id] = data;
+              }
+            });
+            this.isLogsLoading = false;
+          },
         ),
-        (snapshot) => {
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'removed') {
-              delete this.logMap[change.doc.id];
-            } else {
-              const data = change.doc.data() as LogEntry;
-              this.logMap[change.doc.id] = data;
-            }
-          });
-          this.isLogsLoading = false;
-        },
-      ),
-    );
+      );
+    }
   }
 
   unsubscribeAll() {

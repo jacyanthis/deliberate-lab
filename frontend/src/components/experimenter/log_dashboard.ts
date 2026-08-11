@@ -158,7 +158,11 @@ export class Component extends MobxLitElement {
           (log) => this.renderLog(log),
         )}
         ${logs.length === 0
-          ? html`<div class="empty-message">No logs yet</div>`
+          ? html`<div class="empty-message">
+              ${this.experimentManager.ignoreLogs
+                ? 'Logs were not loaded. Reopen this experiment without ?ignoreLogs in the address to see them.'
+                : 'No logs yet'}
+            </div>`
           : nothing}
       </div>
     `;
