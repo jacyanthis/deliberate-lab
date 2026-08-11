@@ -80,8 +80,13 @@ export class SurveyView extends MobxLitElement {
     const saveAnswers = async () => {
       if (!this.stage) return;
 
-      // Save all answers for this stage
-      await this.participantAnswerService.saveSurveyAnswers(this.stage.id);
+      // Save all answers for this stage. Advancing without the save would
+      // lose the answers for good, so a save that did not happen keeps the
+      // participant on the page to try again.
+      const saved = await this.participantAnswerService.saveSurveyAnswers(
+        this.stage.id,
+      );
+      if (!saved) return;
       await this.participantService.progressToNextStage();
     };
 

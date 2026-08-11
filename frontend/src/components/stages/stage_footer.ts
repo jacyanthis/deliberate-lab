@@ -49,8 +49,14 @@ export class Footer extends MobxLitElement {
     const handleNext = async () => {
       this.analyticsService.trackButtonClick(ButtonClick.STAGE_NEXT);
       this.isLoadingNext = true;
-      await this.onNextClick();
-      this.isLoadingNext = false;
+      try {
+        await this.onNextClick();
+      } finally {
+        // A failure (a save that could not reach the server, say) leaves the
+        // participant on the stage; the button has to come back so they can
+        // try again.
+        this.isLoadingNext = false;
+      }
     };
 
     const preventNextClick =
