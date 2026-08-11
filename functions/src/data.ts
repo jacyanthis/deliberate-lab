@@ -2,7 +2,7 @@
  * Data download utilities for Firebase Admin SDK
  */
 
-import {Firestore, Query} from 'firebase-admin/firestore';
+import {FieldPath, Firestore, Query} from 'firebase-admin/firestore';
 import {
   AgentMediatorPersonaConfig,
   AgentMediatorTemplate,
@@ -36,6 +36,18 @@ import {convertTimestamps} from './data.utils';
 export interface GetExperimentDownloadOptions {
   /** Whether to include participant, cohort, and alert data. Defaults to true. */
   includeParticipantData?: boolean;
+  /**
+   * Return at most this many participants, so a study too large to assemble in
+   * one response can be walked a page at a time. The download then carries
+   * nextParticipantCursor, which is the id to pass as participantCursor for the
+   * page after this one, or null at the end.
+   */
+  participantLimit?: number;
+  /** Participant id to continue after; see participantLimit. */
+  participantCursor?: string;
+  /** The same for cohorts, whose public stage data is the other large part. */
+  cohortLimit?: number;
+  cohortCursor?: string;
   /**
    * Assemble participants and cohorts a batch at a time instead of one at a
    * time, and skip the per-stage reads that cannot hold anything. Off by
@@ -87,7 +99,14 @@ export async function getExperimentDownload(
   experimentId: string,
   options: GetExperimentDownloadOptions = {},
 ): Promise<ExperimentDownload | null> {
-  const {includeParticipantData = true, fast = false} = options;
+  const {
+    includeParticipantData = true,
+    fast = false,
+    participantLimit,
+    participantCursor,
+    cohortLimit,
+    cohortCursor,
+  } = options;
   const batchSize = fast ? FAST_BATCH_SIZE : 1;
 
   // Get experiment config from experimentId
@@ -174,27 +193,34 @@ export async function getExperimentDownload(
 
   // Persona banks, when present. Included so the per-participant persona
   // assignment (recorded on each doc's usedBy) is recoverable from the
-  // download; skipped entirely for experiments with no bank.
-  const personaBankDocs = (
-    await firestore
-      .collection('experiments')
-      .doc(experimentId)
-      .collection('personas')
-      .get()
-  ).docs;
+  // download; skipped entirely for experiments with no bank. A caller walking
+  // the experiment in pages has them already, so they are sent with the first
+  // page only rather than repeated on every one.
+  const isLaterPage = Boolean(participantCursor || cohortCursor);
+  const personaBankDocs = isLaterPage
+    ? []
+    : (
+        await firestore
+          .collection('experiments')
+          .doc(experimentId)
+          .collection('personas')
+          .get()
+      ).docs;
   if (personaBankDocs.length > 0) {
     experimentDownload.personaBankMap = {};
     for (const doc of personaBankDocs) {
       experimentDownload.personaBankMap[doc.id] = doc.data();
     }
   }
-  const repPersonaBankDocs = (
-    await firestore
-      .collection('experiments')
-      .doc(experimentId)
-      .collection('repPersonas')
-      .get()
-  ).docs;
+  const repPersonaBankDocs = isLaterPage
+    ? []
+    : (
+        await firestore
+          .collection('experiments')
+          .doc(experimentId)
+          .collection('repPersonas')
+          .get()
+      ).docs;
   if (repPersonaBankDocs.length > 0) {
     experimentDownload.repPersonaBankMap = {};
     for (const doc of repPersonaBankDocs) {
@@ -202,15 +228,44 @@ export async function getExperimentDownload(
     }
   }
 
+  // A page request asks for one collection at a time. Passing a participant
+  // cursor asks for the next participants and nothing else; passing a cohort
+  // cursor asks for the next cohorts and nothing else. Without a cursor the
+  // caller gets the first page of both, along with the parts that are sent
+  // once. Answering with both on every request would restart whichever
+  // collection had already finished, since "no cursor" and "finished" cannot
+  // be told apart.
+  const wantParticipants = !cohortCursor;
+  const wantCohorts = !participantCursor;
+
   if (includeParticipantData) {
     // For each participant, add ParticipantDownload
-    const profiles = (
-      await firestore
-        .collection('experiments')
-        .doc(experimentId)
-        .collection('participants')
-        .get()
-    ).docs.map((doc) => doc.data() as ParticipantProfileExtended);
+    // One page of participants when a limit is asked for, ordered by document
+    // id so a cursor can pick up exactly where the last page stopped. Without
+    // a limit this reads them all, as it always has.
+    let participantQuery: Query = firestore
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('participants');
+    if (participantLimit) {
+      participantQuery = participantQuery.orderBy(FieldPath.documentId());
+      if (participantCursor) {
+        participantQuery = participantQuery.startAfter(participantCursor);
+      }
+      participantQuery = participantQuery.limit(participantLimit);
+    }
+    const participantDocs = wantParticipants
+      ? (await participantQuery.get()).docs
+      : [];
+    if (participantLimit && wantParticipants) {
+      experimentDownload.nextParticipantCursor =
+        participantDocs.length === participantLimit
+          ? participantDocs[participantDocs.length - 1].id
+          : null;
+    }
+    const profiles = participantDocs.map(
+      (doc) => doc.data() as ParticipantProfileExtended,
+    );
     // Stages that can hold in-chat thoughts or private-chat messages, in the
     // experiment's own stage order so the download reads the same either way.
     // The one-at-a-time path keeps asking every stage, as it always has.
@@ -312,14 +367,26 @@ export async function getExperimentDownload(
         participantDownloads[index];
     }
 
-    // For each cohort, add CohortDownload
-    const cohorts = (
-      await firestore
-        .collection('experiments')
-        .doc(experimentId)
-        .collection('cohorts')
-        .get()
-    ).docs.map((cohort) => cohort.data() as CohortConfig);
+    // For each cohort, add CohortDownload, a page at a time when asked.
+    let cohortQuery: Query = firestore
+      .collection('experiments')
+      .doc(experimentId)
+      .collection('cohorts');
+    if (cohortLimit) {
+      cohortQuery = cohortQuery.orderBy(FieldPath.documentId());
+      if (cohortCursor) {
+        cohortQuery = cohortQuery.startAfter(cohortCursor);
+      }
+      cohortQuery = cohortQuery.limit(cohortLimit);
+    }
+    const cohortDocs = wantCohorts ? (await cohortQuery.get()).docs : [];
+    if (cohortLimit && wantCohorts) {
+      experimentDownload.nextCohortCursor =
+        cohortDocs.length === cohortLimit
+          ? cohortDocs[cohortDocs.length - 1].id
+          : null;
+    }
+    const cohorts = cohortDocs.map((cohort) => cohort.data() as CohortConfig);
     const cohortDownloads = await inBatches(
       cohorts,
       batchSize,
@@ -374,15 +441,18 @@ export async function getExperimentDownload(
       experimentDownload.cohortMap[cohort.id] = cohortDownloads[index];
     }
 
-    // Add alerts to ExperimentDownload
-    const alertList = (
-      await firestore
-        .collection('experiments')
-        .doc(experimentId)
-        .collection('alerts')
-        .orderBy('timestamp', 'asc')
-        .get()
-    ).docs.map((doc) => doc.data() as AlertMessage);
+    // Add alerts to ExperimentDownload, with the first page rather than again
+    // on every one.
+    const alertList = isLaterPage
+      ? []
+      : (
+          await firestore
+            .collection('experiments')
+            .doc(experimentId)
+            .collection('alerts')
+            .orderBy('timestamp', 'asc')
+            .get()
+        ).docs.map((doc) => doc.data() as AlertMessage);
 
     // Group alerts by participant private ID
     for (const alert of alertList) {

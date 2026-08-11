@@ -54,6 +54,12 @@ export interface ExperimentDownload {
   repPersonaBankMap?: Record<string, object>;
   // Map from participant private ID to alerts.
   alerts: Record<string, AlertMessage[]>;
+  // Set only when the download was asked for a page of participants: the id to
+  // continue after for the next page, or null once there are no more. Absent
+  // on a whole-experiment download.
+  nextParticipantCursor?: string | null;
+  // The same for cohorts; see nextParticipantCursor.
+  nextCohortCursor?: string | null;
 }
 
 export interface ParticipantDownload {
