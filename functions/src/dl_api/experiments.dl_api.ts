@@ -496,10 +496,46 @@ export async function exportExperimentData(
 
   // Use the shared function to get full experiment data
   const fast = req.query.fast === 'true' || req.query.fast === '1';
+  // A study large enough that one response cannot hold it is walked a page of
+  // participants at a time: pass limit, then pass the nextParticipantCursor
+  // from each response back as cursor until it comes back null. Without limit
+  // this returns the whole experiment, as it always has.
+  const limit = Number(req.query.limit);
+  if (
+    req.query.limit !== undefined &&
+    (!Number.isInteger(limit) || limit < 1)
+  ) {
+    throw createHttpError(400, 'limit must be a positive whole number');
+  }
+  const cursor =
+    typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+  const cohortCursor =
+    typeof req.query.cohortCursor === 'string'
+      ? req.query.cohortCursor
+      : undefined;
+  // A cursor only means anything as part of a paged walk, and each page
+  // continues one collection. Anything else is a client mistake that would
+  // otherwise return quietly wrong data, so it fails loudly instead.
+  if ((cursor || cohortCursor) && req.query.limit === undefined) {
+    throw createHttpError(400, 'a cursor requires limit');
+  }
+  if (cursor && cohortCursor) {
+    throw createHttpError(
+      400,
+      'pass cursor or cohortCursor, not both; each page continues one collection',
+    );
+  }
   const experimentDownload = await getExperimentDownload(
     app.firestore(),
     experimentId,
-    {fast},
+    {
+      fast,
+      ...(req.query.limit !== undefined
+        ? {participantLimit: limit, cohortLimit: limit}
+        : {}),
+      ...(cursor ? {participantCursor: cursor} : {}),
+      ...(cohortCursor ? {cohortCursor} : {}),
+    },
   );
 
   if (!experimentDownload) {

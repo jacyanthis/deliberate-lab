@@ -499,7 +499,16 @@ export class ExperimentManager extends Service {
 
   /** Whether the address asked for the experiment to load without its logs. */
   @computed get ignoreLogs() {
-    const value = this.sp.routerService.activeRoute.params['ignoreLogs'];
+    return this.addressAsksToSkip('ignoreLogs');
+  }
+
+  /** Whether the address asked to load without the spawned agents. */
+  @computed get ignoreAgents() {
+    return this.addressAsksToSkip('ignoreAgents');
+  }
+
+  private addressAsksToSkip(name: string) {
+    const value = this.sp.routerService.activeRoute.params[name];
     return value !== undefined && value !== false && value !== 'false';
   }
 
@@ -605,7 +614,13 @@ export class ExperimentManager extends Service {
       ),
     );
 
-    // Subscribe to participants' private profiles
+    // Subscribe to participants' private profiles. Spawned agents live in this
+    // same collection, a run creates roughly eleven of them per person, and
+    // each one carries its persona text, so on a large study they are most of
+    // what this page waits for. `?ignoreAgents` fetches only the humans, whose
+    // documents carry agentConfig as an explicit null. That single condition
+    // needs no declared index, so the deleted are filtered below instead of in
+    // the query; they are rare, one document apiece.
     this.unsubscribe.push(
       onSnapshot(
         query(
@@ -615,17 +630,22 @@ export class ExperimentManager extends Service {
             id,
             'participants',
           ),
-          where('currentStatus', '!=', ParticipantStatus.DELETED),
+          this.ignoreAgents
+            ? where('agentConfig', '==', null)
+            : where('currentStatus', '!=', ParticipantStatus.DELETED),
         ),
         (snapshot) => {
           snapshot.docChanges().forEach((change) => {
-            if (change.type === 'removed') {
+            const data = {
+              agentConfig: null,
+              ...change.doc.data(),
+            } as ParticipantProfileExtended;
+            if (
+              change.type === 'removed' ||
+              data.currentStatus === ParticipantStatus.DELETED
+            ) {
               delete this.participantMap[change.doc.id];
             } else {
-              const data = {
-                agentConfig: null,
-                ...change.doc.data(),
-              } as ParticipantProfileExtended;
               this.participantMap[change.doc.id] = data;
             }
           });
