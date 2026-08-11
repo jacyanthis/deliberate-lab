@@ -349,13 +349,17 @@ export class ParticipantAnswerService extends Service {
     await this.sp.participantService.setChipTurn(stageId);
   }
 
-  async saveSurveyAnswers(stageId: string) {
+  /** Returns true when the answers reached the server, or when there was
+   * nothing to save. */
+  async saveSurveyAnswers(stageId: string): Promise<boolean> {
     const answer = this.answerMap[stageId];
-    if (!answer || answer.kind !== StageKind.SURVEY) return;
-    await this.sp.participantService.updateSurveyStageParticipantAnswerMap(
-      stageId,
-      answer.answerMap,
-    );
+    if (!answer || answer.kind !== StageKind.SURVEY) return true;
+    const response =
+      await this.sp.participantService.updateSurveyStageParticipantAnswerMap(
+        stageId,
+        answer.answerMap,
+      );
+    return response !== null;
   }
 
   async saveFlipCardAnswers(stageId: string) {

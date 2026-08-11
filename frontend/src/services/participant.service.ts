@@ -918,7 +918,10 @@ export class ParticipantService extends Service {
     id: string, // survey stage ID,
     answerMap: Record<string, SurveyAnswer>, // map of question ID to answer
   ) {
-    let response = {};
+    // Null means nothing was sent to the server. Callers that are about to
+    // move the participant forward need to know the difference, because
+    // answers that never reached the server are gone once the stage advances.
+    let response = null;
 
     let participantAnswer = this.answerMap[id] as SurveyStageParticipantAnswer;
     if (!participantAnswer) {
