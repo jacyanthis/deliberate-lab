@@ -186,6 +186,9 @@ export class Component extends MobxLitElement {
           'Agent participants',
           this.experimentManager.getCohortAgentParticipants(this.cohort.id),
           html`${this.renderAddAgentParticipant()}`,
+          this.experimentManager.ignoreAgents
+            ? 'Agent profiles were ignored in experimenter view via ?ignoreAgents'
+            : undefined,
         )}
         ${this.renderMediatorTable(
           'Agent mediators',
