@@ -1,4 +1,4 @@
-import {computed, makeObservable, observable} from 'mobx';
+import {computed, makeObservable, observable, reaction} from 'mobx';
 import {
   collection,
   onSnapshot,
@@ -118,6 +118,10 @@ export class ExperimentManager extends Service {
   @observable cohortMap: Record<string, CohortConfig> = {};
   @observable agentPersonaMap: Record<string, AgentPersonaConfig> = {};
   @observable participantMap: Record<string, ParticipantProfileExtended> = {};
+  // Listeners scoped to the cohorts humans are in, rebuilt as that set
+  // changes; only used with ignoreCohortsWithoutHumans.
+  private cohortScopeUnsubscribes: Unsubscribe[] = [];
+  private cohortScopeDisposer: (() => void) | undefined;
   @observable mediatorMap: Record<string, MediatorProfileExtended> = {};
   @observable alertMap: Record<string, AlertMessage> = {};
   @observable logMap: Record<string, LogEntry> = {};
@@ -507,6 +511,19 @@ export class ExperimentManager extends Service {
     return this.addressAsksToSkip('ignoreAgents');
   }
 
+  /** Whether the address asked to load only the cohorts a human is in.
+   *
+   * In a study whose people move to a fresh cohort every round, a cohort with
+   * no human in it is finished business: only its spawned agents and
+   * mediators remain, and they outnumber everything else as the study grows.
+   * With `?ignoreCohortsWithoutHumans` the page loads the humans first and
+   * then only the cohorts they are in, with the agents and mediators of just
+   * those cohorts.
+   */
+  @computed get ignoreCohortsWithoutHumans() {
+    return this.addressAsksToSkip('ignoreCohortsWithoutHumans');
+  }
+
   private addressAsksToSkip(name: string) {
     const value = this.sp.routerService.activeRoute.params[name];
     return value !== undefined && value !== false && value !== 'false';
@@ -577,42 +594,44 @@ export class ExperimentManager extends Service {
       ),
     );
 
-    // Subscribe to cohorts
-    this.unsubscribe.push(
-      onSnapshot(
-        collection(
-          this.sp.firebaseService.firestore,
-          'experiments',
-          id,
-          'cohorts',
-        ),
-        (snapshot) => {
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'removed') {
-              delete this.cohortMap[change.doc.id];
-              if (this.currentCohortId === change.doc.id) {
-                this.currentCohortId = undefined;
+    // Subscribe to cohorts. With ignoreCohortsWithoutHumans the cohorts are
+    // loaded per human instead, in subscribeCohortScope below.
+    if (!this.ignoreCohortsWithoutHumans)
+      this.unsubscribe.push(
+        onSnapshot(
+          collection(
+            this.sp.firebaseService.firestore,
+            'experiments',
+            id,
+            'cohorts',
+          ),
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'removed') {
+                delete this.cohortMap[change.doc.id];
+                if (this.currentCohortId === change.doc.id) {
+                  this.currentCohortId = undefined;
+                }
+              } else {
+                const data = change.doc.data() as CohortConfig;
+                this.cohortMap[change.doc.id] = data;
+                if (!this.currentCohortId) {
+                  this.currentCohortId = change.doc.id;
+                }
               }
-            } else {
-              const data = change.doc.data() as CohortConfig;
-              this.cohortMap[change.doc.id] = data;
-              if (!this.currentCohortId) {
-                this.currentCohortId = change.doc.id;
-              }
+            });
+
+            // If multiple cohorts, show cohort list
+            if (Object.keys(this.cohortMap).length > 1) {
+              this.setShowCohortList(true, true);
+            } else if (Object.keys(this.cohortMap).length === 0) {
+              this.setShowCohortEditor(true, true);
             }
-          });
 
-          // If multiple cohorts, show cohort list
-          if (Object.keys(this.cohortMap).length > 1) {
-            this.setShowCohortList(true, true);
-          } else if (Object.keys(this.cohortMap).length === 0) {
-            this.setShowCohortEditor(true, true);
-          }
-
-          this.isCohortsLoading = false;
-        },
-      ),
-    );
+            this.isCohortsLoading = false;
+          },
+        ),
+      );
 
     // Subscribe to participants' private profiles. Spawned agents live in this
     // same collection, a run creates roughly eleven of them per person, and
@@ -630,7 +649,7 @@ export class ExperimentManager extends Service {
             id,
             'participants',
           ),
-          this.ignoreAgents
+          this.ignoreAgents || this.ignoreCohortsWithoutHumans
             ? where('agentConfig', '==', null)
             : where('currentStatus', '!=', ParticipantStatus.DELETED),
         ),
@@ -672,35 +691,37 @@ export class ExperimentManager extends Service {
       ),
     );
 
-    // Subscribe to mediators' private profiles
-    this.unsubscribe.push(
-      onSnapshot(
-        query(
-          collection(
-            this.sp.firebaseService.firestore,
-            'experiments',
-            id,
-            'mediators',
+    // Subscribe to mediators' private profiles. With
+    // ignoreCohortsWithoutHumans they load per cohort in subscribeCohortScope.
+    if (!this.ignoreCohortsWithoutHumans)
+      this.unsubscribe.push(
+        onSnapshot(
+          query(
+            collection(
+              this.sp.firebaseService.firestore,
+              'experiments',
+              id,
+              'mediators',
+            ),
+            where('currentStatus', '!=', ParticipantStatus.DELETED),
           ),
-          where('currentStatus', '!=', ParticipantStatus.DELETED),
-        ),
-        (snapshot) => {
-          snapshot.docChanges().forEach((change) => {
-            if (change.type === 'removed') {
-              delete this.mediatorMap[change.doc.id];
-            } else {
-              const data = {
-                agentConfig: null,
-                ...change.doc.data(),
-              } as MediatorProfileExtended;
-              this.mediatorMap[change.doc.id] = data;
-            }
-          });
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'removed') {
+                delete this.mediatorMap[change.doc.id];
+              } else {
+                const data = {
+                  agentConfig: null,
+                  ...change.doc.data(),
+                } as MediatorProfileExtended;
+                this.mediatorMap[change.doc.id] = data;
+              }
+            });
 
-          this.isMediatorsLoading = false;
-        },
-      ),
-    );
+            this.isMediatorsLoading = false;
+          },
+        ),
+      );
 
     // Subscribe to agent mediator personas
     // NOTE: We don't currently subscribe to agent participant personas
@@ -761,9 +782,147 @@ export class ExperimentManager extends Service {
         ),
       );
     }
+
+    // The cohorts humans are in, tracked live: whenever a human joins,
+    // transfers, or leaves, the set of cohorts worth showing changes, and the
+    // cohort-scoped listeners are rebuilt for the new set.
+    if (this.ignoreCohortsWithoutHumans) {
+      this.cohortScopeDisposer = reaction(
+        () => {
+          const ids = new Set<string>();
+          for (const participant of Object.values(this.participantMap)) {
+            if (participant.agentConfig) continue;
+            if (participant.currentCohortId)
+              ids.add(participant.currentCohortId);
+            if (participant.transferCohortId) {
+              ids.add(participant.transferCohortId);
+            }
+          }
+          return [...ids].sort().join(',');
+        },
+        (key) => this.subscribeCohortScope(id, key ? key.split(',') : []),
+        {fireImmediately: true},
+      );
+    }
+  }
+
+  /** Listen to the given cohorts and the mediators and agents inside them.
+   *
+   * Rebuilt whole whenever the set changes; the set is the cohorts humans are
+   * in, a few dozen at most, so a rebuild is a handful of queries. Entries
+   * from cohorts no longer in the set are dropped so finished cohorts do not
+   * accumulate. Firestore takes at most thirty values per condition, hence
+   * the chunks.
+   */
+  private subscribeCohortScope(experimentId: string, cohortIds: string[]) {
+    this.cohortScopeUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    this.cohortScopeUnsubscribes = [];
+    const wanted = new Set(cohortIds);
+    for (const [cohortId] of Object.entries(this.cohortMap)) {
+      if (!wanted.has(cohortId)) delete this.cohortMap[cohortId];
+    }
+    for (const [mediatorId, mediator] of Object.entries(this.mediatorMap)) {
+      if (!wanted.has(mediator.currentCohortId ?? '')) {
+        delete this.mediatorMap[mediatorId];
+      }
+    }
+    for (const [participantId, participant] of Object.entries(
+      this.participantMap,
+    )) {
+      if (
+        participant.agentConfig &&
+        !wanted.has(participant.currentCohortId ?? '')
+      ) {
+        delete this.participantMap[participantId];
+      }
+    }
+    if (cohortIds.length === 0) {
+      this.isCohortsLoading = false;
+      this.isMediatorsLoading = false;
+      return;
+    }
+    const base = (name: string) =>
+      collection(
+        this.sp.firebaseService.firestore,
+        'experiments',
+        experimentId,
+        name,
+      );
+    for (let index = 0; index < cohortIds.length; index += 30) {
+      const chunk = cohortIds.slice(index, index + 30);
+      this.cohortScopeUnsubscribes.push(
+        onSnapshot(
+          // Cohort documents carry their id as a field, which queries the
+          // same as the document id and works on every emulator version.
+          query(base('cohorts'), where('id', 'in', chunk)),
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'removed') {
+                delete this.cohortMap[change.doc.id];
+              } else {
+                this.cohortMap[change.doc.id] =
+                  change.doc.data() as CohortConfig;
+              }
+            });
+            this.isCohortsLoading = false;
+          },
+        ),
+      );
+      this.cohortScopeUnsubscribes.push(
+        onSnapshot(
+          query(base('mediators'), where('currentCohortId', 'in', chunk)),
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              const data = {
+                agentConfig: null,
+                ...change.doc.data(),
+              } as MediatorProfileExtended;
+              if (
+                change.type === 'removed' ||
+                data.currentStatus === MediatorStatus.DELETED
+              ) {
+                delete this.mediatorMap[change.doc.id];
+              } else {
+                this.mediatorMap[change.doc.id] = data;
+              }
+            });
+            this.isMediatorsLoading = false;
+          },
+        ),
+      );
+      // The humans are already loaded experiment-wide; this brings in the
+      // spawned agents sharing their cohorts, unless agents are ignored too.
+      if (!this.ignoreAgents) {
+        this.cohortScopeUnsubscribes.push(
+          onSnapshot(
+            query(base('participants'), where('currentCohortId', 'in', chunk)),
+            (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
+                const data = {
+                  agentConfig: null,
+                  ...change.doc.data(),
+                } as ParticipantProfileExtended;
+                if (
+                  change.type === 'removed' ||
+                  data.currentStatus === ParticipantStatus.DELETED
+                ) {
+                  delete this.participantMap[change.doc.id];
+                } else {
+                  this.participantMap[change.doc.id] = data;
+                }
+              });
+            },
+          ),
+        );
+      }
+    }
   }
 
   unsubscribeAll() {
+    this.cohortScopeDisposer?.();
+    this.cohortScopeDisposer = undefined;
+    this.cohortScopeUnsubscribes.forEach((unsubscribe) => unsubscribe());
+    this.cohortScopeUnsubscribes = [];
     this.unsubscribe.forEach((unsubscribe) => unsubscribe());
     this.unsubscribe = [];
 
