@@ -74,6 +74,10 @@ app.get('/v1/experiments/:id', getExperiment);
 app.put('/v1/experiments/:id', updateExperiment);
 app.delete('/v1/experiments/:id', deleteExperiment);
 app.get('/v1/experiments/:id/export', exportExperimentData);
+// POST carries the same export with a body naming what the caller already
+// holds (excludeParticipants / excludeCohorts), which a query string cannot
+// fit once a study has thousands of ids.
+app.post('/v1/experiments/:id/export', exportExperimentData);
 app.get('/v1/experiments/:id/export/logs', exportExperimentLogs);
 app.post('/v1/experiments/:id/fork', forkExperiment);
 

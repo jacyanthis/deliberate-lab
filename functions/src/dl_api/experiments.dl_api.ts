@@ -513,6 +513,38 @@ export async function exportExperimentData(
     typeof req.query.cohortCursor === 'string'
       ? req.query.cohortCursor
       : undefined;
+  // A POST body may name what the caller already holds from an earlier
+  // export, so a repeated export of a growing study only carries what is new.
+  const readIdList = (value: unknown, name: string): string[] => {
+    if (value === undefined) return [];
+    if (
+      !Array.isArray(value) ||
+      value.length > 200000 ||
+      value.some((entry) => typeof entry !== 'string')
+    ) {
+      throw createHttpError(400, `${name} must be an array of id strings`);
+    }
+    return value;
+  };
+  const excludeParticipantIds = readIdList(
+    req.body?.excludeParticipants,
+    'excludeParticipants',
+  );
+  const excludeCohortIds = readIdList(
+    req.body?.excludeCohorts,
+    'excludeCohorts',
+  );
+  const isIncremental =
+    excludeParticipantIds.length > 0 || excludeCohortIds.length > 0;
+  if (
+    isIncremental &&
+    (req.query.limit !== undefined || cursor || cohortCursor)
+  ) {
+    throw createHttpError(
+      400,
+      'excludeParticipants/excludeCohorts cannot be combined with limit or cursors',
+    );
+  }
   // A cursor only means anything as part of a paged walk, and each page
   // continues one collection. Anything else is a client mistake that would
   // otherwise return quietly wrong data, so it fails loudly instead.
@@ -535,6 +567,8 @@ export async function exportExperimentData(
         : {}),
       ...(cursor ? {participantCursor: cursor} : {}),
       ...(cohortCursor ? {cohortCursor} : {}),
+      ...(excludeParticipantIds.length ? {excludeParticipantIds} : {}),
+      ...(excludeCohortIds.length ? {excludeCohortIds} : {}),
     },
   );
 

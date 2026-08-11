@@ -49,6 +49,16 @@ export interface GetExperimentDownloadOptions {
   cohortLimit?: number;
   cohortCursor?: string;
   /**
+   * Participants the caller already holds from an earlier export, by public or
+   * private id; they are left out of this download, so a repeated export of a
+   * growing study only carries the people the caller does not have yet. The
+   * persona banks are left out too, since a caller with an earlier export has
+   * them. Cannot be combined with the limit and cursor options.
+   */
+  excludeParticipantIds?: string[];
+  /** The same for cohorts, by cohort id. */
+  excludeCohortIds?: string[];
+  /**
    * Assemble participants and cohorts a batch at a time instead of one at a
    * time, and skip the per-stage reads that cannot hold anything. Off by
    * default: the download is the same either way, so this only matters once an
@@ -106,7 +116,13 @@ export async function getExperimentDownload(
     participantCursor,
     cohortLimit,
     cohortCursor,
+    excludeParticipantIds,
+    excludeCohortIds,
   } = options;
+  const excludedParticipants = new Set(excludeParticipantIds ?? []);
+  const excludedCohorts = new Set(excludeCohortIds ?? []);
+  const isIncremental =
+    excludedParticipants.size > 0 || excludedCohorts.size > 0;
   const batchSize = fast ? FAST_BATCH_SIZE : 1;
 
   // Get experiment config from experimentId
@@ -196,7 +212,8 @@ export async function getExperimentDownload(
   // download; skipped entirely for experiments with no bank. A caller walking
   // the experiment in pages has them already, so they are sent with the first
   // page only rather than repeated on every one.
-  const isLaterPage = Boolean(participantCursor || cohortCursor);
+  const isLaterPage =
+    Boolean(participantCursor || cohortCursor) || isIncremental;
   const personaBankDocs = isLaterPage
     ? []
     : (
@@ -263,9 +280,13 @@ export async function getExperimentDownload(
           ? participantDocs[participantDocs.length - 1].id
           : null;
     }
-    const profiles = participantDocs.map(
-      (doc) => doc.data() as ParticipantProfileExtended,
-    );
+    const profiles = participantDocs
+      .map((doc) => doc.data() as ParticipantProfileExtended)
+      .filter(
+        (profile) =>
+          !excludedParticipants.has(profile.publicId) &&
+          !excludedParticipants.has(profile.privateId),
+      );
     // Stages that can hold in-chat thoughts or private-chat messages, in the
     // experiment's own stage order so the download reads the same either way.
     // The one-at-a-time path keeps asking every stage, as it always has.
@@ -386,7 +407,9 @@ export async function getExperimentDownload(
           ? cohortDocs[cohortDocs.length - 1].id
           : null;
     }
-    const cohorts = cohortDocs.map((cohort) => cohort.data() as CohortConfig);
+    const cohorts = cohortDocs
+      .map((cohort) => cohort.data() as CohortConfig)
+      .filter((cohort) => !excludedCohorts.has(cohort.id));
     const cohortDownloads = await inBatches(
       cohorts,
       batchSize,
