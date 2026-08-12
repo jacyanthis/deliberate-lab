@@ -68,9 +68,33 @@ export class ParticipantView extends MobxLitElement {
   @state() isStartExperimentLoading = false;
 
   private stageReactionDisposer?: () => void;
+  private transferReactionDisposer?: () => void;
+  private isAcceptingTransfer = false;
 
   override connectedCallback() {
     super.connectedCallback();
+    // When the experiment accepts transfers on the participant's behalf, join
+    // the new cohort as soon as the transfer is raised. Only in the
+    // participant's own view: an experimenter previewing must not move them.
+    this.transferReactionDisposer = reaction(
+      () =>
+        !this.authService.isExperimenter &&
+        this.experimentService.experiment?.autoAcceptTransfers === true &&
+        this.participantService.profile?.currentStatus ===
+          ParticipantStatus.TRANSFER_PENDING,
+      async (isPending) => {
+        if (!isPending || this.isAcceptingTransfer) {
+          return;
+        }
+        this.isAcceptingTransfer = true;
+        try {
+          await this.participantService.acceptParticipantTransfer();
+        } finally {
+          this.isAcceptingTransfer = false;
+        }
+      },
+      {fireImmediately: true},
+    );
     this.stageReactionDisposer = reaction(
       () => this.participantService.currentStageViewId,
       async () => {
@@ -94,6 +118,7 @@ export class ParticipantView extends MobxLitElement {
   override disconnectedCallback() {
     super.disconnectedCallback();
     this.stageReactionDisposer?.();
+    this.transferReactionDisposer?.();
   }
 
   override render() {
@@ -202,7 +227,8 @@ export class ParticipantView extends MobxLitElement {
   private renderTransferPopup() {
     if (
       this.participantService.profile?.currentStatus !==
-      ParticipantStatus.TRANSFER_PENDING
+        ParticipantStatus.TRANSFER_PENDING ||
+      this.experimentService.experiment?.autoAcceptTransfers
     ) {
       return nothing;
     }

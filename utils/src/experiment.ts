@@ -80,6 +80,10 @@ export interface Experiment {
   variableConfigs?: VariableConfig[]; // list of variable configs used in experiment
   variableMap?: Record<string, string>; // variable to assigned value
   cohortDefinitions?: CohortDefinition[]; // pre-defined cohorts for individual routing
+  // If true, a participant sent to a new cohort joins it without being asked:
+  // the accept/decline pop-up is not shown and the transfer stage completes on
+  // its own. Unset or false keeps the pop-up.
+  autoAcceptTransfers?: boolean;
 }
 
 /** Experiment template (used to load experiments). */
@@ -137,6 +141,7 @@ export function createExperimentConfig(
     variableConfigs: config.variableConfigs ?? [],
     variableMap: config.variableMap ?? {},
     cohortDefinitions: config.cohortDefinitions,
+    autoAcceptTransfers: config.autoAcceptTransfers,
   };
 }
 

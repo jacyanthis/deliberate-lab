@@ -1104,6 +1104,7 @@ class Experiment(BaseModel):
     ) = None
     variableMap: Annotated[dict[str, str] | None, Field(title="VariableMap")] = None
     cohortDefinitions: list[CohortDefinition] | None = None
+    autoAcceptTransfers: bool | None = None
 
 
 class ExperimentTemplate(BaseModel):

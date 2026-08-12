@@ -89,6 +89,7 @@ export const ExperimentTemplateSchema = Type.Object(
         variableConfigs: Type.Optional(Type.Array(VariableConfigData)),
         variableMap: Type.Optional(Type.Record(Type.String(), Type.String())),
         cohortDefinitions: Type.Optional(Type.Array(CohortDefinitionSchema)),
+        autoAcceptTransfers: Type.Optional(Type.Boolean()),
       },
       strict,
     ),

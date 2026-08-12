@@ -4505,6 +4505,9 @@
                   "items": {
                     "$ref": "#/$defs/CohortDefinition"
                   }
+                },
+                "autoAcceptTransfers": {
+                  "type": "boolean"
                 }
               },
               "title": "Experiment"
