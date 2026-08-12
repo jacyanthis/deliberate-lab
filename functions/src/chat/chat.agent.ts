@@ -1299,7 +1299,13 @@ async function resolveTimeoutTargetPrivateIds(
 ): Promise<string[]> {
   if (stage.kind === StageKind.PRIVATE_CHAT) {
     const privateId = participantIds[0];
-    return privateId ? [privateId] : [];
+    if (!privateId) return [];
+    // Only if they are still in the chat. A call that gives up after the
+    // participant has moved on must not reach them on a later stage, where
+    // the timeout message has nowhere to go and the pop-up would block a
+    // page that is working.
+    const participant = await getFirestoreParticipant(experimentId, privateId);
+    return participant?.currentStageId === stage.id ? [privateId] : [];
   }
   const activeParticipants = await getFirestoreActiveParticipants(
     experimentId,

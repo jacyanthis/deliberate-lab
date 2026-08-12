@@ -308,10 +308,15 @@ export async function updateCohortStageUnlocked(
   existingTransaction?: FirebaseFirestore.Transaction,
 ) {
   const runLogic = async (transaction: FirebaseFirestore.Transaction) => {
-    // Get active participants for given cohort
+    // Get active participants for given cohort. Observers are counted: they
+    // wait on the stage like anyone else, and a cohort whose only human is an
+    // observer would otherwise never reach the minimum and never unlock.
     const activeParticipants = await getFirestoreActiveParticipants(
       experimentId,
       cohortId,
+      null,
+      false,
+      true, // include observers
     );
 
     // Get participant pending transfer into current cohort
@@ -391,7 +396,9 @@ export async function updateCohortStageUnlocked(
       .collection('cohorts')
       .doc(cohortId);
 
-    const cohortConfig = (await cohortDoc.get()).data() as
+    // Read inside the transaction and write the one entry, so an unlock for
+    // another stage landing at the same time is not overwritten.
+    const cohortConfig = (await transaction.get(cohortDoc)).data() as
       | CohortConfig
       | undefined;
     if (!cohortConfig || cohortConfig.stageUnlockMap[stageId]) {
@@ -399,7 +406,7 @@ export async function updateCohortStageUnlocked(
     }
 
     cohortConfig.stageUnlockMap[stageId] = true;
-    transaction.set(cohortDoc, cohortConfig);
+    transaction.update(cohortDoc, {[`stageUnlockMap.${stageId}`]: true});
 
     // Now that the given stage is unlocked, active any agent
     // participants that are ready to start (and have not yet completed)
