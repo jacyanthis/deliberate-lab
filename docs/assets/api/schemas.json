@@ -4763,6 +4763,9 @@
                 },
                 "representativePromptContext": {
                   "type": ["string", "null"]
+                },
+                "autoAcceptTransfers": {
+                  "type": "boolean"
                 }
               },
               "title": "Experiment"

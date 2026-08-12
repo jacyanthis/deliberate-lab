@@ -104,6 +104,7 @@ export const ExperimentTemplateSchema = Type.Object(
         representativePromptContext: Type.Optional(
           Type.Union([Type.String(), Type.Null()]),
         ),
+        autoAcceptTransfers: Type.Optional(Type.Boolean()),
       },
       strict,
     ),

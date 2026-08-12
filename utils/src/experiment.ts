@@ -108,6 +108,10 @@ export interface Experiment {
   // views it speaks for. {{name}} resolves to the represented person's display
   // name. Unset uses REPRESENTATIVE_PROMPT_CONTEXT.
   representativePromptContext?: string | null;
+  // If true, a participant sent to a new cohort joins it without being asked:
+  // the accept/decline pop-up is not shown and the transfer stage completes on
+  // its own. Unset or false keeps the pop-up.
+  autoAcceptTransfers?: boolean;
 }
 
 /** Experiment template (used to load experiments). */
@@ -170,6 +174,7 @@ export function createExperimentConfig(
     representativePromptContext: config.representativePromptContext ?? null,
     timeoutMessageLimit: config.timeoutMessageLimit,
     useNeutralTimeoutResponses: config.useNeutralTimeoutResponses,
+    autoAcceptTransfers: config.autoAcceptTransfers,
   };
 }
 
