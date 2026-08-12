@@ -44,7 +44,14 @@ export class ProfileEditor extends MobxLitElement {
     const updateProfile = async () => {
       const profile = this.participantAnswerService.profile;
       if (profile) {
-        this.participantService.updateParticipantProfile(profile);
+        // Awaited, so the footer keeps its loading state until the profile
+        // has been written and the stage advanced; without that a second
+        // click lands while the first is still in flight.
+        await this.participantService.updateParticipantProfile(
+          profile,
+          true,
+          this.stage?.id,
+        );
       }
     };
 
