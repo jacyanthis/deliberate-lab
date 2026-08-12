@@ -148,7 +148,7 @@ export class SurveyView extends MobxLitElement {
       await this.participantAnswerService.saveSurveyPerParticipantAnswers(
         this.stage.id,
       );
-      await this.participantService.progressToNextStage();
+      await this.participantService.progressToNextStage(this.stage?.id);
     };
 
     const wrapperStyle = this.renderSummaryView

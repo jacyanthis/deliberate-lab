@@ -102,6 +102,25 @@ const BaseParticipantData = Type.Object(
 export type BaseParticipantData = Static<typeof BaseParticipantData>;
 
 // ************************************************************************* //
+// updateParticipantToNextStage endpoint                                     //
+// ************************************************************************* //
+// The stage the participant is leaving. The endpoint completes whatever
+// stage the participant record currently holds, so a call that arrives late,
+// or twice, would otherwise complete the page they have just been shown and
+// never answered. Naming the stage makes the call refuse to act on any other
+// one. Optional, so a client that does not send it behaves as before.
+const NextStageData = Type.Object(
+  {
+    experimentId: Type.String({minLength: 1}),
+    participantId: Type.String({minLength: 1}),
+    currentStageId: Type.Optional(Type.String({minLength: 1})),
+  },
+  strict,
+);
+
+export type NextStageData = Static<typeof NextStageData>;
+
+// ************************************************************************* //
 // initiateParticipantTransfer endpoint for experimenters                    //
 // ************************************************************************* //
 const InitiateParticipantTransferData = Type.Object(
