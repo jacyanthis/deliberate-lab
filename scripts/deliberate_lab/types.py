@@ -1143,6 +1143,7 @@ class Experiment(BaseModel):
     spawnedAgentModelSettings: AgentModelSettings | None = None
     spawnedAgentChatSettings: AgentChatSettings | None = None
     representativePromptContext: str | None = None
+    autoAcceptTransfers: bool | None = None
 
 
 class ExperimentTemplate(BaseModel):

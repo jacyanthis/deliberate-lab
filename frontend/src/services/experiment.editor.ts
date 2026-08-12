@@ -316,6 +316,7 @@ export class ExperimentEditor extends Service {
       prolificConfig: template.experiment.prolificConfig,
       variableConfigs: template.experiment.variableConfigs,
       cohortDefinitions: template.experiment.cohortDefinitions,
+      autoAcceptTransfers: template.experiment.autoAcceptTransfers,
     });
     this.setStages(template.stageConfigs);
     this.setAgentMediators(template.agentMediators);
