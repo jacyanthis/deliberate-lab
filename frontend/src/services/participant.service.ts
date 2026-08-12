@@ -520,7 +520,14 @@ export class ParticipantService extends Service {
   }
 
   /** Move to next stage. */
-  async progressToNextStage() {
+  /** Move past the given stage.
+   *
+   * The stage is named so the backend completes that one and no other: a
+   * duplicate click, or a call from a page the participant has already left,
+   * would otherwise complete whatever page they are looking at now and store
+   * no answers for it.
+   */
+  async progressToNextStage(currentStageId?: string) {
     if (!this.experimentId || !this.profile) {
       return;
     }
@@ -530,6 +537,7 @@ export class ParticipantService extends Service {
       {
         experimentId: this.experimentId,
         participantId: this.profile.privateId,
+        ...(currentStageId ? {currentStageId} : {}),
       },
     );
 
@@ -592,6 +600,7 @@ export class ParticipantService extends Service {
   async updateParticipantProfile(
     baseProfile: ParticipantProfileBase,
     progressToNextStage = true,
+    currentStageId?: string,
   ) {
     if (!this.profile) {
       return;
@@ -612,7 +621,7 @@ export class ParticipantService extends Service {
     }
 
     if (progressToNextStage) {
-      await this.progressToNextStage();
+      await this.progressToNextStage(currentStageId);
     }
 
     return response;

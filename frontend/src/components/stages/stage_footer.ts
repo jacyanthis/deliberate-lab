@@ -24,7 +24,9 @@ export class Footer extends MobxLitElement {
   @property() showNextButton = true;
   @property() buttonText = ''; // Custom button text (overrides default)
   @property() onNextClick: () => void = async () => {
-    await this.participantService.progressToNextStage();
+    await this.participantService.progressToNextStage(
+      this.participantService.currentStageViewId,
+    );
   };
 
   @state() isLoadingNext = false;

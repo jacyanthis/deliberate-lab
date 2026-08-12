@@ -165,7 +165,7 @@ export class AssetAllocationParticipantView extends MobxLitElement {
           .stage=${this.stage}
           .buttonText=${answer.confirmed ? '' : 'Confirm allocation'}
           .onNextClick=${answer.confirmed
-            ? () => this.participantService.progressToNextStage()
+            ? () => this.participantService.progressToNextStage(this.stage?.id)
             : () => this.confirmAllocation()}
         >
           ${answer.confirmed && this.stage.progress.showParticipantProgress
@@ -494,7 +494,7 @@ export class AssetAllocationParticipantView extends MobxLitElement {
     );
 
     // Automatically progress to next stage
-    await this.participantService.progressToNextStage();
+    await this.participantService.progressToNextStage(this.stage?.id);
   }
 
   private getStockInfoStage(): StockInfoStageConfig | null {
@@ -582,7 +582,7 @@ export class MultiAssetAllocationParticipantView extends MobxLitElement {
       await this.participantAnswerService.saveMultiAssetAllocationAnswer(
         this.stage.id,
       );
-      await this.participantService.progressToNextStage();
+      await this.participantService.progressToNextStage(this.stage?.id);
     };
 
     return html`

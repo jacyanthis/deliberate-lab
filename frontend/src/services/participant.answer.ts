@@ -349,11 +349,16 @@ export class ParticipantAnswerService extends Service {
     await this.sp.participantService.setChipTurn(stageId);
   }
 
-  /** Returns true when the answers reached the server, or when there was
-   * nothing to save. */
+  /** Returns true when the answers reached the server.
+   *
+   * Holding no answers for the stage is a failure, not a quiet success: the
+   * page cannot be left, since advancing would mark it done with nothing
+   * stored. A stage that genuinely has nothing to record still has its own
+   * document here, created as soon as anything is answered.
+   */
   async saveSurveyAnswers(stageId: string): Promise<boolean> {
     const answer = this.answerMap[stageId];
-    if (!answer || answer.kind !== StageKind.SURVEY) return true;
+    if (!answer || answer.kind !== StageKind.SURVEY) return false;
     const response =
       await this.sp.participantService.updateSurveyStageParticipantAnswerMap(
         stageId,

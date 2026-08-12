@@ -271,7 +271,7 @@ export class FlipCardParticipantView extends MobxLitElement {
     if (!this.stage) return;
 
     await this.participantAnswerService.saveFlipCardAnswers(this.stage.id);
-    await this.participantService.progressToNextStage();
+    await this.participantService.progressToNextStage(this.stage?.id);
   };
 
   private getParticipantAnswer(): FlipCardStageParticipantAnswer {

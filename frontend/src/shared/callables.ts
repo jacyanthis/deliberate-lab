@@ -3,6 +3,7 @@ import {
   AgentConfigTestData,
   DeliberateLabAPIKeyPermission,
   BaseParticipantData,
+  NextStageData,
   CreateChatMessageData,
   CohortCreationData,
   CohortDeletionData,
@@ -279,12 +280,12 @@ export const updateParticipantProfileCallable = async (
 /** Generic endpoint to progress participant to next stage */
 export const updateParticipantToNextStageCallable = async (
   functions: Functions,
-  config: BaseParticipantData,
+  config: NextStageData,
 ) => {
   // Entering a turn-based stage generates the opening agent messages before
   // the call returns, so allow the backend's full response deadline.
   const {data} = await httpsCallable<
-    BaseParticipantData,
+    NextStageData,
     ParticipantNextStageResponse
   >(functions, 'updateParticipantToNextStage', {timeout: 300_000})(config);
   return data;

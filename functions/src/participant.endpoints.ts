@@ -460,6 +460,18 @@ export const updateParticipantToNextStage = onCall(
 
       // Check minimum time enforcement for chat stages
       const currentStageId = participant.currentStageId;
+
+      // This endpoint completes whatever stage the participant record holds,
+      // so a second call, or one sent from a page the participant has since
+      // moved off, would complete the page they were just shown and have not
+      // answered, leaving it marked done with nothing stored. A caller that
+      // names the stage it is leaving gets to act only on that stage;
+      // anything else is left alone and told where the participant actually
+      // is. A caller that names nothing behaves as it always has.
+      if (data.currentStageId && data.currentStageId !== currentStageId) {
+        response = {currentStageId, endExperiment: false};
+        return;
+      }
       const stage = await getFirestoreStage(data.experimentId, currentStageId);
       if (stage) {
         const minTimeMinutes = (stage as {timeMinimumInMinutes?: number | null})
