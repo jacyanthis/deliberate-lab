@@ -519,7 +519,6 @@ export class ParticipantService extends Service {
     });
   }
 
-  /** Move to next stage. */
   /** Move past the given stage.
    *
    * The stage is named so the backend completes that one and no other: a
