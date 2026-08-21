@@ -996,6 +996,50 @@ describe('Chat Triggers - Turn Taking Mechanics', () => {
       );
     });
 
+    it('Scenario 1c: a kept place survives the cycle wrap', async () => {
+      // The order is rebuilt again when a cycle wraps. If that rebuild drops a
+      // place, the guarantee lasts only until the end of the pass, which is
+      // where a speaker was seen taking two turns.
+      mockGetFirestoreActiveParticipants.mockResolvedValue([
+        {publicId: 'p1', privateId: 'priv1'},
+        {publicId: 'p3', privateId: 'priv3'},
+      ]);
+
+      mockGetFirestoreStagePublicData.mockResolvedValue({
+        id: 'stage123',
+        currentTurnParticipantId: 'p3',
+        turnOrder: ['m1', 'p1', 'p2', 'p3'],
+        cycleIndex: 0,
+      });
+
+      const chatMessage = {
+        id: 'msg-wrap',
+        senderId: 'p3', // the last place in the order, so the cycle wraps
+        message: 'End of the pass',
+        type: UserType.PARTICIPANT,
+        timestamp: {} as any,
+      } as ChatMessage;
+
+      await onPublicChatMessageCreated.run({
+        data: {data: () => chatMessage, exists: true},
+        params: {
+          experimentId: 'exp123',
+          cohortId: 'cohort123',
+          stageId: 'stage123',
+          chatId: 'msg-wrap',
+        },
+      } as any);
+
+      expect(__mocks__.setMock).toHaveBeenCalledWith(
+        'experiments/exp123/cohorts/cohort123/publicStageData/stage123',
+        expect.objectContaining({
+          turnOrder: ['m1', 'p1', 'p2', 'p3'],
+          cycleIndex: 1,
+        }),
+        {merge: true},
+      );
+    });
+
     it('Scenario 2: Recycle on all remaining speakers dropout', async () => {
       mockGetFirestoreStage.mockResolvedValue({
         id: 'stage123',

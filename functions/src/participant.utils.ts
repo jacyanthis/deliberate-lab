@@ -313,8 +313,10 @@ export async function updateCohortStageUnlocked(
   // model calls and its own writes, none of which are undone when the attempt
   // is discarded. Reset per attempt so a retry does not inherit the last one's
   // list.
-  let toStart: ParticipantProfileExtended[] = [];
-  let experimentForAgents: Experiment | null = null;
+  let toStart: {
+    experiment: Experiment;
+    participant: ParticipantProfileExtended;
+  }[] = [];
   const runLogic = async (transaction: FirebaseFirestore.Transaction) => {
     toStart = [];
     // Get active participants for given cohort. Observers are counted: they
@@ -425,10 +427,9 @@ export async function updateCohortStageUnlocked(
     ).data() as Experiment;
     for (const participant of participants) {
       if (participant.agentConfig && participant.currentStageId === stageId) {
-        toStart.push(participant);
+        toStart.push({experiment, participant});
       } // end agent participant if
     } // end participant loop
-    experimentForAgents = experiment;
   };
 
   if (existingTransaction) {
@@ -439,10 +440,8 @@ export async function updateCohortStageUnlocked(
   // The caller's transaction has not committed yet when one is passed in, so
   // this still runs ahead of that commit; what it no longer does is run once
   // per discarded attempt of this function's own transaction.
-  if (experimentForAgents) {
-    for (const participant of toStart) {
-      completeStageAsAgentParticipant(experimentForAgents, participant);
-    }
+  for (const {experiment, participant} of toStart) {
+    completeStageAsAgentParticipant(experiment, participant);
   }
 }
 
