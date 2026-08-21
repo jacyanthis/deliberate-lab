@@ -429,7 +429,7 @@ export const onPublicChatMessageCreated = onDocumentCreated(
         // back. Rebuilding the order from the active list alone dropped them
         // and added them again at the end, which moved everyone's place and
         // let a speaker who was ahead of them take a second turn in the same
-        // cycle. Nobody is skipped by staying here: the turn advance below
+        // cycle. Keeping the place costs nothing: the turn advance below
         // passes over anyone who cannot speak when their place comes round.
         const seatedMediators = turnOrder.filter((id: string) =>
           allMediatorIds.includes(id),
@@ -647,9 +647,13 @@ export const onPublicChatMessageCreated = onDocumentCreated(
                   );
                   nextTurnOrder = [...nextMediators, ...shuffledParticipants];
                 } else {
-                  // Preserve the stable human ordering
-                  const currentParticipants = turnOrder.filter((id) =>
-                    allPublicParticipantIds.includes(id),
+                  // Preserve the stable human ordering, places included: the
+                  // same reason the order is not rebuilt from the active list
+                  // on every message applies at a cycle boundary, or a
+                  // participant who is briefly away loses their place here
+                  // instead.
+                  const currentParticipants = turnOrder.filter(
+                    (id) => !allMediatorIds.includes(id),
                   );
                   nextTurnOrder = [...nextMediators, ...currentParticipants];
                 }
