@@ -261,6 +261,21 @@ export const onPublicChatMessageCreated = onDocumentCreated(
           | undefined;
         if (!chatPublicData) return;
 
+        // One message advances the turn once. Firestore delivers a creation
+        // event at least once, so this trigger can run again for a message it
+        // has already handled. Without this check the second run advances the
+        // turn a second time: the speaker who was told to go is left holding a
+        // turn that has moved on, its message is dropped as out of turn or
+        // loses the race for the trigger claim, and that place in the cycle
+        // passes with nothing said. Every branch below records the message it
+        // acted on, so a repeat is recognised here and does nothing.
+        if (
+          chatPublicData.turnProcessedMessageId &&
+          chatPublicData.turnProcessedMessageId === message.id
+        ) {
+          return;
+        }
+
         let turnOrder = chatPublicData.turnOrder ?? [];
         let currentTurnParticipantId = chatPublicData.currentTurnParticipantId;
         let cycleIndex = chatPublicData.cycleIndex ?? 0;
