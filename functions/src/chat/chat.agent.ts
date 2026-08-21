@@ -380,10 +380,12 @@ export async function createAgentChatMessageFromPrompt(
     // producing a duplicate reply. Event delivery is at-least-once, so the
     // private-chat message trigger can fire more than once for the same
     // participant message; each firing would otherwise generate its own
-    // independent reply. The public turn-based path is already guarded upstream
-    // by turnProcessedMessageId; this covers the private turn-based path the
-    // same way, so a given responder answers a given trigger message at most
-    // once. Non-turn-based chats keep their existing behavior.
+    // independent reply. This covers the private turn-based path only, so a
+    // given responder answers a given trigger message at most once there. The
+    // public turn-based path has no equivalent guard: the group-chat trigger
+    // writes turnProcessedMessageId but never reads it, so a re-delivered
+    // event still advances the turn a second time. Non-turn-based chats keep
+    // their existing behavior.
     if (triggerChatId !== '' && isTurnBasedPrivateChat) {
       const replyLogRef = getPrivateChatTriggerLogRef(
         experimentId,
