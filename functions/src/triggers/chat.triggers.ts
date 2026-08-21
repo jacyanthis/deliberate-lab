@@ -420,28 +420,35 @@ export const onPublicChatMessageCreated = onDocumentCreated(
 
         // Filter turnOrder to only include currently active/non-dropped-out IDs
         const originalTurnOrder = [...turnOrder];
-        const filteredTurnOrder = turnOrder.filter((id: string) =>
-          activeIds.includes(id),
-        );
 
-        const currentMediators = filteredTurnOrder.filter((id) =>
+        // Whoever already has a place in the order keeps it, whether or not
+        // they can speak on this message. A participant is only counted as
+        // active while their stored cohort, status and current stage all match
+        // this chat, so someone who is between stages, mid-transfer or briefly
+        // disconnected reads as inactive for a message or two and then comes
+        // back. Rebuilding the order from the active list alone dropped them
+        // and added them again at the end, which moved everyone's place and
+        // let a speaker who was ahead of them take a second turn in the same
+        // cycle. Nobody is skipped by staying here: the turn advance below
+        // passes over anyone who cannot speak when their place comes round.
+        const seatedMediators = turnOrder.filter((id: string) =>
           allMediatorIds.includes(id),
         );
-        const missingMediators = allMediatorIds.filter(
-          (id) => !filteredTurnOrder.includes(id),
+        const newMediators = allMediatorIds.filter(
+          (id) => !turnOrder.includes(id),
         );
-        const currentParticipants = filteredTurnOrder.filter((id) =>
-          allPublicParticipantIds.includes(id),
+        const seatedParticipants = turnOrder.filter(
+          (id: string) => !allMediatorIds.includes(id),
         );
-        const missingParticipants = allPublicParticipantIds.filter(
-          (id) => !filteredTurnOrder.includes(id),
+        const newParticipants = allPublicParticipantIds.filter(
+          (id) => !turnOrder.includes(id),
         );
 
         turnOrder = [
-          ...currentMediators,
-          ...missingMediators,
-          ...currentParticipants,
-          ...missingParticipants,
+          ...seatedMediators,
+          ...newMediators,
+          ...seatedParticipants,
+          ...newParticipants,
         ];
 
         // If the current turn holder is no longer active (e.g., dropped out), auto-advance!
