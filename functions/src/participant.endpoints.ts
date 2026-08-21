@@ -705,10 +705,16 @@ export const acceptParticipantTransfer = onCall(async (request) => {
 
   // Run document write as transaction to ensure consistency
   await app.firestore().runTransaction(async (transaction) => {
+    // Read the participant through the transaction, not with a plain get: the
+    // guard below and the clearing of transferCohortId inside
+    // completeParticipantTransfer only serialise two callers if the
+    // transaction holds a read on this document. With a plain get it holds
+    // none, so two accepts arriving together both see the transfer pending,
+    // both commit, and the target cohort is populated twice.
     const participant = (
-      await participantDoc.get()
+      await transaction.get(participantDoc)
     ).data() as ParticipantProfileExtended;
-    if (!participant.transferCohortId) {
+    if (!participant?.transferCohortId) {
       return {success: false};
     }
 
