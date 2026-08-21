@@ -714,7 +714,7 @@ export const acceptParticipantTransfer = onCall(async (request) => {
     const participant = (
       await transaction.get(participantDoc)
     ).data() as ParticipantProfileExtended;
-    if (!participant?.transferCohortId) {
+    if (!participant.transferCohortId) {
       return {success: false};
     }
 
