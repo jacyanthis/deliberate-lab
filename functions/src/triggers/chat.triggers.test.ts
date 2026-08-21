@@ -849,11 +849,19 @@ describe('Chat Triggers - Turn Taking Mechanics', () => {
       await onPublicChatMessageCreated.run(event as any);
 
       // Assert turnOrder is cleaned and currentTurnParticipantId advances to next active (p3)
+      // p2 keeps its place. Someone who reads as inactive may be between
+      // stages, mid-transfer or briefly disconnected, and taking their place
+      // away moves everyone behind them, which lets a speaker who is ahead
+      // take a second turn in the same cycle. A place that is no longer wanted
+      // costs one skipped attempt when it comes round; a participant who
+      // really has left is removed by
+      // advanceTurnBasedChatIfCurrentParticipantLeft on their own document
+      // write, which can tell a departure from a stale read.
       expect(__mocks__.setMock).toHaveBeenCalledWith(
         'experiments/exp123/cohorts/cohort123/publicStageData/stage123',
         {
           currentTurnParticipantId: 'p3',
-          turnOrder: ['m1', 'p1', 'p3'],
+          turnOrder: ['m1', 'p1', 'p2', 'p3'],
           cycleIndex: 0,
           turnProcessedMessageId: 'msg123',
         },
@@ -862,6 +870,51 @@ describe('Chat Triggers - Turn Taking Mechanics', () => {
 
       // Since the new turn holder is p3 (not p1 who sent the message), we return early and do NOT trigger further AI
       expect(mockInternalCreateAgentChatMessage).not.toHaveBeenCalled();
+    });
+
+    it('Scenario 1b: a kept place is skipped again on the next cycle', async () => {
+      // The place p2 keeps must be passed over every time it comes round, not
+      // just once, or the round stalls on someone who is not there.
+      mockGetFirestoreActiveParticipants.mockResolvedValue([
+        {publicId: 'p1', privateId: 'priv1'},
+        {publicId: 'p3', privateId: 'priv3'},
+      ]);
+
+      mockGetFirestoreStagePublicData.mockResolvedValue({
+        id: 'stage123',
+        currentTurnParticipantId: 'p1',
+        turnOrder: ['m1', 'p1', 'p2', 'p3'],
+        cycleIndex: 3,
+      });
+
+      const chatMessage = {
+        id: 'msg-later',
+        senderId: 'p1',
+        message: 'Round and round',
+        type: UserType.PARTICIPANT,
+        timestamp: {} as any,
+      } as ChatMessage;
+
+      await onPublicChatMessageCreated.run({
+        data: {data: () => chatMessage, exists: true},
+        params: {
+          experimentId: 'exp123',
+          cohortId: 'cohort123',
+          stageId: 'stage123',
+          chatId: 'msg-later',
+        },
+      } as any);
+
+      // p1 spoke, so the turn passes over p2's kept place to p3, and p2 is
+      // still in the order for when they come back.
+      expect(__mocks__.setMock).toHaveBeenCalledWith(
+        'experiments/exp123/cohorts/cohort123/publicStageData/stage123',
+        expect.objectContaining({
+          currentTurnParticipantId: 'p3',
+          turnOrder: ['m1', 'p1', 'p2', 'p3'],
+        }),
+        {merge: true},
+      );
     });
 
     it('Scenario 2: Recycle on all remaining speakers dropout', async () => {
