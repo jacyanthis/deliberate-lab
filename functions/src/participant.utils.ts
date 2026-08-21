@@ -307,7 +307,18 @@ export async function updateCohortStageUnlocked(
   currentParticipantId: string,
   existingTransaction?: FirebaseFirestore.Transaction,
 ) {
+  // Agents to start once the unlock has actually been written. Starting them
+  // inside the transaction ran them on attempts that were later thrown away:
+  // a transaction body runs again on contention, and each run made its own
+  // model calls and its own writes, none of which are undone when the attempt
+  // is discarded. Reset per attempt so a retry does not inherit the last one's
+  // list.
+  let toStart: {
+    experiment: Experiment;
+    participant: ParticipantProfileExtended;
+  }[] = [];
   const runLogic = async (transaction: FirebaseFirestore.Transaction) => {
+    toStart = [];
     // Get active participants for given cohort. Observers are counted: they
     // wait on the stage like anyone else, and a cohort whose only human is an
     // observer would otherwise never reach the minimum and never unlock.
@@ -416,7 +427,7 @@ export async function updateCohortStageUnlocked(
     ).data() as Experiment;
     for (const participant of participants) {
       if (participant.agentConfig && participant.currentStageId === stageId) {
-        completeStageAsAgentParticipant(experiment, participant);
+        toStart.push({experiment, participant});
       } // end agent participant if
     } // end participant loop
   };
@@ -425,6 +436,12 @@ export async function updateCohortStageUnlocked(
     await runLogic(existingTransaction);
   } else {
     await app.firestore().runTransaction(runLogic);
+  }
+  // The caller's transaction has not committed yet when one is passed in, so
+  // this still runs ahead of that commit; what it no longer does is run once
+  // per discarded attempt of this function's own transaction.
+  for (const {experiment, participant} of toStart) {
+    completeStageAsAgentParticipant(experiment, participant);
   }
 }
 
