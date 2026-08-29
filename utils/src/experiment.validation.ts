@@ -14,6 +14,16 @@ import {VariableConfigData} from './variables.validation';
 /** Shorthand for strict TypeBox object validation */
 const strict = {additionalProperties: false} as const;
 
+/**
+ * An object that accepts fields it does not list.
+ *
+ * Used for the contents of an uploaded experiment, so an experiment carrying
+ * a field added after this schema was written is stored rather than rejected.
+ * Request wrappers stay strict: an unexpected field there is a malformed
+ * call, not a new setting.
+ */
+const open = {additionalProperties: true} as const;
+
 /** Firestore collections that experiments can be written to. */
 export const FirestoreCollectionData = Type.Union([
   Type.Literal('experimentTemplates'),
@@ -90,13 +100,15 @@ export const ExperimentTemplateSchema = Type.Object(
         variableMap: Type.Optional(Type.Record(Type.String(), Type.String())),
         cohortDefinitions: Type.Optional(Type.Array(CohortDefinitionSchema)),
       },
-      strict,
+      // Deliberately not strict: see `open` above. The fields named here are
+      // still checked when present.
+      open,
     ),
     stageConfigs: Type.Array(StageConfigData),
     agentMediators: Type.Array(AgentMediatorTemplateData),
     agentParticipants: Type.Array(AgentParticipantTemplateData),
   },
-  strict,
+  open,
 );
 
 export const ExperimentCreationData = Type.Object(

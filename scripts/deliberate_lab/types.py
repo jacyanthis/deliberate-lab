@@ -1083,7 +1083,7 @@ class ModelGenerationConfig(BaseModel):
 
 class Experiment(BaseModel):
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
         populate_by_name=True,
     )
     id: str
@@ -1108,7 +1108,7 @@ class Experiment(BaseModel):
 
 class ExperimentTemplate(BaseModel):
     model_config = ConfigDict(
-        extra="forbid",
+        extra="allow",
         populate_by_name=True,
     )
     id: str

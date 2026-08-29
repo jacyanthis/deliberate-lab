@@ -124,6 +124,13 @@ export function createExperimentConfig(
   config: Partial<Experiment> = {},
 ): Experiment {
   return {
+    // Everything the caller passed is kept, including fields this function
+    // has never heard of. Listing the fields to keep meant every field added
+    // later was silently dropped by each copy, edit, and fork of an
+    // experiment until someone noticed and extended the list.
+    ...config,
+    // The values below are the only ones this function decides for itself:
+    // each is either generated here or filled with a default when missing.
     id: config.id || generateId(),
     versionId: EXPERIMENT_VERSION_ID,
     metadata: config.metadata ?? createMetadataConfig(),
@@ -136,7 +143,6 @@ export function createExperimentConfig(
     cohortLockMap: config.cohortLockMap ?? {},
     variableConfigs: config.variableConfigs ?? [],
     variableMap: config.variableMap ?? {},
-    cohortDefinitions: config.cohortDefinitions,
   };
 }
 
@@ -145,6 +151,8 @@ export function createExperimentTemplate(
   config: Partial<ExperimentTemplate>,
 ): ExperimentTemplate {
   return {
+    // As in createExperimentConfig: keep everything, fill in what is missing.
+    ...config,
     id: config.id || generateId(),
     experiment: config.experiment ?? createExperimentConfig(),
     stageConfigs: config.stageConfigs ?? [],

@@ -230,15 +230,15 @@ export class ExperimentEditor extends Service {
   }
 
   loadTemplate(template: ExperimentTemplate, loadExperimentId = false) {
-    // Only copy over relevant parts (e.g., not template ID)
+    // Carry every experiment field across. This used to list the fields to
+    // copy, so any field added after the list was written was silently
+    // dropped the first time anyone opened the experiment in the editor.
+    // The id is the one field not always carried: it decides which stored
+    // experiment a save writes, so a new experiment built from a template
+    // gets a fresh id, while editing an existing experiment keeps its own.
     this.experiment = createExperimentConfig(template.stageConfigs, {
+      ...template.experiment,
       id: loadExperimentId ? template.experiment.id : generateId(),
-      metadata: template.experiment.metadata,
-      permissions: template.experiment.permissions,
-      defaultCohortConfig: template.experiment.defaultCohortConfig,
-      prolificConfig: template.experiment.prolificConfig,
-      variableConfigs: template.experiment.variableConfigs,
-      cohortDefinitions: template.experiment.cohortDefinitions,
     });
     this.setStages(template.stageConfigs);
     this.setAgentMediators(template.agentMediators);
