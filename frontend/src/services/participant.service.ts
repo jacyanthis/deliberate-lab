@@ -1,29 +1,30 @@
 import {
   AlertMessage,
+  AlertStatus,
   AssetAllocation,
   ChatMessage,
+  ChatMessageReaction,
   ChatStageParticipantAnswer,
   ChipOffer,
   CreateChatMessageData,
   FlipCardStageParticipantAnswer,
-  RankingItem,
   MultiAssetAllocationStageParticipantAnswer,
   ParticipantProfileBase,
   ParticipantProfileExtended,
   ParticipantStatus,
-  RoleStageConfig,
-  StageKind,
   StageParticipantAnswer,
   SurveyAnswer,
   SurveyPerParticipantStageParticipantAnswer,
   SurveyStageParticipantAnswer,
   UnifiedTimestamp,
+  UpdateChatMessageReactionData,
   UpdateChatStageParticipantAnswerData,
   createChatMessage,
   createChatStageParticipantAnswer,
   createParticipantChatMessage,
   createSurveyPerParticipantStageParticipantAnswer,
   createSurveyStageParticipantAnswer,
+  getParticipantStageProfile,
 } from '@deliberation-lab/utils';
 import {
   Timestamp,
@@ -34,8 +35,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  setDoc,
-  updateDoc,
 } from 'firebase/firestore';
 import {action, computed, makeObservable, observable, runInAction} from 'mobx';
 import {CohortService} from './cohort.service';
@@ -56,6 +55,7 @@ import {
   sendChipResponseCallable,
   setChipTurnCallable,
   setParticipantRolesCallable,
+  setParticipantNegotiationProfilesCallable,
   setSalespersonControllerCallable,
   setSalespersonMoveCallable,
   setSalespersonResponseCallable,
@@ -66,11 +66,13 @@ import {
   updateParticipantProfileCallable,
   updateParticipantToNextStageCallable,
   updateParticipantWaitingCallable,
+  updateChatMessageReactionCallable,
   updateChatStageParticipantAnswerCallable,
   updateFlipCardStageParticipantAnswerCallable,
   updateSurveyPerParticipantStageParticipantAnswerCallable,
   updateSurveyStageParticipantAnswerCallable,
   updateRankingStageParticipantAnswerCallable,
+  ackExperimenterAlertCallable,
 } from '../shared/callables';
 import {PROLIFIC_COMPLETION_URL_PREFIX} from '../shared/constants';
 import {
@@ -80,7 +82,6 @@ import {
   isPendingParticipant,
   isParticipantEndedExperiment,
 } from '../shared/participant.utils';
-import {ElectionStrategy} from '@deliberation-lab/utils';
 
 interface ServiceProvider {
   cohortService: CohortService;
@@ -217,7 +218,7 @@ export class ParticipantService extends Service {
   isReadyToEndChatDiscussion(stageId: string, discussionId: string) {
     // Use public stage data as source of truth
     // (since public stage data is used to determine current discussion ID)
-    const {completed, notCompleted} =
+    const {completed} =
       this.sp.cohortService.getParticipantsByChatDiscussionCompletion(
         stageId,
         discussionId,
@@ -388,9 +389,9 @@ export class ParticipantService extends Service {
     }
   }
 
-  /** Subscribe to participant's private alerts. */
   async loadAlertMessages() {
     if (!this.experimentId || !this.participantId) return;
+    let isInitial = true;
     this.unsubscribe.push(
       onSnapshot(
         query(
@@ -405,17 +406,24 @@ export class ParticipantService extends Service {
           orderBy('timestamp', 'asc'),
         ),
         (snapshot) => {
-          let changedDocs = snapshot.docChanges().map((change) => change.doc);
-          if (changedDocs.length === 0) {
-            changedDocs = snapshot.docs;
-          }
-
           runInAction(() => {
-            changedDocs.forEach((doc) => {
-              const alert = doc.data() as AlertMessage;
+            snapshot.docChanges().forEach((change) => {
+              const alert = change.doc.data() as AlertMessage;
+              const isNew = change.type === 'added' && !this.alertMap[alert.id];
               this.alertMap[alert.id] = alert;
+
+              // Auto-pop help panel on receiving a new experimenter alert
+              if (
+                !isInitial &&
+                isNew &&
+                alert.isExperimenterInitiated &&
+                alert.status === AlertStatus.NEW
+              ) {
+                this.showHelpPanel = true;
+              }
             });
           });
+          isInitial = false;
         },
       ),
     );
@@ -630,17 +638,23 @@ export class ParticipantService extends Service {
     let response = {};
     this.isSendingChat = true;
     if (this.experimentId && this.profile) {
+      const currentStage = this.sp.experimentService.getStage(
+        this.profile.currentStageId,
+      );
+      const stageProfile = getParticipantStageProfile(
+        this.profile,
+        this.profile.currentStageId,
+        currentStage?.name ?? '',
+        currentStage?.anonymousProfileSetId,
+      );
+
       const chatMessage = createParticipantChatMessage({
         ...config,
         discussionId: this.sp.cohortService.getChatDiscussionId(
           this.profile.currentStageId,
         ),
         senderId: this.profile.publicId,
-        profile: {
-          name: this.profile.name,
-          avatar: this.profile.avatar,
-          pronouns: this.profile.pronouns,
-        },
+        profile: stageProfile,
       });
 
       const createData: CreateChatMessageData = {
@@ -658,6 +672,32 @@ export class ParticipantService extends Service {
     }
     this.isSendingChat = false;
     return response;
+  }
+
+  /** Apply or remove a reaction on a chat message. */
+  async updateChatMessageReaction(
+    stageId: string,
+    chatMessageId: string,
+    reaction: ChatMessageReaction,
+    add: boolean,
+  ) {
+    if (!this.experimentId || !this.profile) return;
+
+    const reactionData: UpdateChatMessageReactionData = {
+      experimentId: this.experimentId,
+      cohortId: this.profile.currentCohortId,
+      stageId,
+      participantId: this.profile.privateId,
+      chatMessageId,
+      senderId: this.profile.publicId,
+      reaction,
+      add,
+    };
+
+    return await updateChatMessageReactionCallable(
+      this.sp.firebaseService.functions,
+      reactionData,
+    );
   }
 
   /** Send error chat message. */
@@ -1074,6 +1114,21 @@ export class ParticipantService extends Service {
     return output;
   }
 
+  async setParticipantNegotiationProfiles(stageId: string) {
+    let output = {success: false};
+    if (this.experimentId && this.profile) {
+      output = await setParticipantNegotiationProfilesCallable(
+        this.sp.firebaseService.functions,
+        {
+          experimentId: this.experimentId,
+          cohortId: this.profile.currentCohortId,
+          stageId,
+        },
+      );
+    }
+    return output;
+  }
+
   async sendAlertMessage(message: string) {
     let response = {};
     if (this.experimentId && this.profile && message.trim().length > 0) {
@@ -1089,5 +1144,20 @@ export class ParticipantService extends Service {
       );
     }
     return response;
+  }
+
+  async ackExperimenterAlert(alertId: string) {
+    let output = {};
+    if (this.experimentId && this.profile) {
+      output = await ackExperimenterAlertCallable(
+        this.sp.firebaseService.functions,
+        {
+          experimentId: this.experimentId,
+          participantId: this.profile.privateId,
+          alertId,
+        },
+      );
+    }
+    return output;
   }
 }

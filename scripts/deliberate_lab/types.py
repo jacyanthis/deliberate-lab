@@ -10,7 +10,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
 
 
 class CollectionName(StrEnum):
@@ -117,9 +117,6 @@ class ShuffleConfig(BaseModel):
 
 
 class Weight(RootModel[float]):
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
     root: Annotated[float, Field(ge=1.0)]
 
 
@@ -208,6 +205,7 @@ class MultiAssetAllocationStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     stockOptions: list[Stock]
     stockInfoStageId: str
 
@@ -289,6 +287,7 @@ class InfoStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     infoLines: list[str]
     youtubeVideoId: str | None = None
 
@@ -340,8 +339,10 @@ class SurveyPayoutItem(BaseModel):
     isActive: bool
     stageId: str
     baseCurrencyAmount: float
-    rankingStageId: str | None = None
-    questionMap: Annotated[dict[str, float | None], Field(title="QuestionMap")]
+    rankingStageId: str | None
+    questionMap: Annotated[
+        dict[constr(pattern=r"^(.*)$"), float | None], Field(title="QuestionMap")
+    ]
 
 
 class PrivateChatStageConfig(BaseModel):
@@ -354,6 +355,7 @@ class PrivateChatStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     timeLimitInMinutes: Annotated[int | None, Field(ge=1)] = None
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     isTurnBasedChat: bool | None = None
@@ -379,6 +381,7 @@ class ProfileStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     profileType: ProfileType
 
 
@@ -387,7 +390,8 @@ class Strategy(StrEnum):
     condorcet = "condorcet"
 
 
-RankingItem = MultipleChoiceItem
+class RankingItem(MultipleChoiceItem):
+    pass
 
 
 class ParticipantRankingStageConfig(BaseModel):
@@ -400,6 +404,7 @@ class ParticipantRankingStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     rankingType: Literal["participants"] = "participants"
     strategy: Strategy
     enableSelfVoting: bool
@@ -466,7 +471,7 @@ class Role(BaseModel):
     name: str
     displayLines: list[str]
     minParticipants: int
-    maxParticipants: int | None = None
+    maxParticipants: int | None
 
 
 class RoleStageConfig(BaseModel):
@@ -479,7 +484,46 @@ class RoleStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     roles: list[Role]
+
+
+class Item(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    name: str
+    avatar: str
+    displayLines: list[str]
+
+
+class NegotiationProfileStageConfig(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    kind: Literal["negotiationProfile"] = "negotiationProfile"
+    name: Annotated[str, Field(min_length=1)]
+    descriptions: StageTextConfig
+    progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
+    items: list[Item]
+
+
+class NegotiationPayoutStageConfig(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(min_length=1)]
+    kind: Literal["negotiationPayout"] = "negotiationPayout"
+    name: Annotated[str, Field(min_length=1)]
+    descriptions: StageTextConfig
+    progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
 
 
 class SalespersonStageConfig(BaseModel):
@@ -492,6 +536,7 @@ class SalespersonStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
 
 
 class StockInfoStageConfig(BaseModel):
@@ -504,6 +549,7 @@ class StockInfoStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     stocks: list[Stock]
     visibleStockIds: list[str] | None = None
     showBestYearCard: bool
@@ -512,8 +558,8 @@ class StockInfoStageConfig(BaseModel):
     useQuarterlyMarkers: bool
     showInvestmentGrowth: bool
     useSharedYAxis: bool
-    initialInvestment: Annotated[float | None, Field(ge=1.0)] = 1000
-    currency: str | None = "USD"
+    initialInvestment: Annotated[float, Field(ge=1.0)] = 1000
+    currency: str = "USD"
     introText: str | None = None
 
 
@@ -557,6 +603,7 @@ class TOSStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     tosLines: list[str]
 
 
@@ -580,7 +627,9 @@ class SurveyAutoTransferConfig(BaseModel):
     autoCohortParticipantConfig: CohortParticipantConfig
     surveyStageId: Annotated[str, Field(min_length=1)]
     surveyQuestionId: Annotated[str, Field(min_length=1)]
-    participantCounts: Annotated[dict[str, int], Field(title="ParticipantCounts")]
+    participantCounts: Annotated[
+        dict[constr(pattern=r"^(.*)$"), int], Field(title="ParticipantCounts")
+    ]
 
 
 class ApiKeyType(StrEnum):
@@ -756,6 +805,7 @@ class AgentChatSettings(BaseModel):
     canSelfTriggerCalls: bool
     maxResponses: int | None = None
     initialMessage: str
+    includeTimestampsPrivateChat: bool | None = None
 
 
 class StageKind(StrEnum):
@@ -775,6 +825,8 @@ class StageKind(StrEnum):
     assetAllocation = "assetAllocation"
     multiAssetAllocation = "multiAssetAllocation"
     role = "role"
+    negotiationProfile = "negotiationProfile"
+    negotiationPayout = "negotiationPayout"
     survey = "survey"
     surveyPerParticipant = "surveyPerParticipant"
     transfer = "transfer"
@@ -802,6 +854,7 @@ class AssetAllocationStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     stockConfig: Annotated[StockConfig, Field(title="StockConfig")]
 
 
@@ -826,6 +879,7 @@ class ChipStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     enableChat: bool
     numRounds: float
     chips: list[ChipItem]
@@ -853,6 +907,7 @@ class ComprehensionStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     questions: list[TextQuestion | McQuestion]
 
 
@@ -866,6 +921,7 @@ class FlipCardStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     cards: list[FlipCard]
     enableSelection: bool
     allowMultipleSelections: bool
@@ -884,6 +940,7 @@ class PayoutStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     currency: Currency
     payoutItems: list[DefaultPayoutItem | ChipPayoutItem | SurveyPayoutItem]
     averageAllPayoutItems: bool
@@ -899,6 +956,7 @@ class ItemRankingStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     rankingType: Literal["items"] = "items"
     strategy: Strategy
     rankingItems: list[RankingItem]
@@ -914,6 +972,7 @@ class RevealStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     items: list[
         ChipRevealItem
         | RankingRevealItem
@@ -975,22 +1034,12 @@ class ChatStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     timeLimitInMinutes: Annotated[int | None, Field(ge=1)] = None
     timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
     discussions: list[DefaultChatDiscussion | CompareChatDiscussion]
     isTurnBased: bool | None = None
-
-
-class RankingStageConfig(
-    RootModel[ItemRankingStageConfig | ParticipantRankingStageConfig]
-):
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
-    root: Annotated[
-        ItemRankingStageConfig | ParticipantRankingStageConfig,
-        Field(title="RankingStageConfig"),
-    ]
+    enableReactionsAndReplies: bool | None = None
 
 
 class ProviderOptionsMap(BaseModel):
@@ -1035,7 +1084,9 @@ class Experiment(BaseModel):
     defaultCohortConfig: CohortParticipantConfig
     prolificConfig: Annotated[ProlificConfig, Field(title="ProlificConfig")]
     stageIds: list[str]
-    cohortLockMap: Annotated[dict[str, bool], Field(title="CohortLockMap")]
+    cohortLockMap: Annotated[
+        dict[constr(pattern=r"^(.*)$"), bool], Field(title="CohortLockMap")
+    ]
     variableConfigs: (
         list[
             StaticVariableConfig
@@ -1044,7 +1095,9 @@ class Experiment(BaseModel):
         ]
         | None
     ) = None
-    variableMap: Annotated[dict[str, str] | None, Field(title="VariableMap")] = None
+    variableMap: Annotated[
+        dict[constr(pattern=r"^(.*)$"), str] | None, Field(title="VariableMap")
+    ] = None
     cohortDefinitions: list[CohortDefinition] | None = None
 
 
@@ -1066,16 +1119,18 @@ class ExperimentTemplate(BaseModel):
         | PayoutStageConfig
         | PrivateChatStageConfig
         | ProfileStageConfig
-        | ItemRankingStageConfig
-        | ParticipantRankingStageConfig
         | RevealStageConfig
         | RoleStageConfig
+        | NegotiationProfileStageConfig
+        | NegotiationPayoutStageConfig
         | SalespersonStageConfig
         | StockInfoStageConfig
         | SurveyPerParticipantStageConfig
         | SurveyStageConfig
         | TOSStageConfig
         | TransferStageConfig
+        | ItemRankingStageConfig
+        | ParticipantRankingStageConfig
     ]
     agentMediators: list[AgentMediatorTemplate]
     agentParticipants: list[AgentParticipantTemplate]
@@ -1106,7 +1161,7 @@ class StaticVariableConfig(BaseModel):
     scope: Scope
     definition: VariableDefinition
     value: str
-    cohortValues: dict[str, str] | None = None
+    cohortValues: dict[constr(pattern=r"^(.*)$"), str] | None = None
 
 
 class Object(BaseModel):
@@ -1116,7 +1171,11 @@ class Object(BaseModel):
     )
     type: Literal["object"] = "object"
     properties: Annotated[
-        dict[str, String | Number | Integer | Boolean | Object | Array] | None,
+        dict[
+            constr(pattern=r"^(.*)$"),
+            String | Number | Integer | Boolean | Object1 | Array,
+        ]
+        | None,
         Field(title="Properties"),
     ] = None
 
@@ -1128,7 +1187,7 @@ class Array(BaseModel):
     )
     type: Literal["array"] = "array"
     items: Annotated[
-        String | Number | Integer | Boolean | Object | Array | None,
+        String | Number | Integer | Boolean | Object1 | Array | None,
         Field(title="JSONSchemaDefinition"),
     ] = None
 
@@ -1144,6 +1203,10 @@ class VariableDefinition(BaseModel):
         String | Number | Integer | Boolean | Object | Array,
         Field(alias="schema", title="JSONSchemaDefinition"),
     ]
+
+
+class Object1(Object):
+    pass
 
 
 class RandomPermutationVariableConfig(BaseModel):
@@ -1184,6 +1247,7 @@ class SurveyPerParticipantStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     questions: list[
         TextSurveyQuestion
         | CheckSurveyQuestion
@@ -1271,12 +1335,15 @@ class SurveyStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     questions: list[
         TextSurveyQuestion
         | CheckSurveyQuestion
         | MultipleChoiceSurveyQuestion
         | ScaleSurveyQuestion
     ]
+    timeLimitInMinutes: Annotated[int | None, Field(ge=1)] = None
+    timeMinimumInMinutes: Annotated[int | None, Field(ge=1)] = None
 
 
 class TransferStageConfig(BaseModel):
@@ -1289,6 +1356,7 @@ class TransferStageConfig(BaseModel):
     name: Annotated[str, Field(min_length=1)]
     descriptions: StageTextConfig
     progress: StageProgressConfig
+    anonymousProfileSetId: str | None = None
     enableTimeout: bool
     timeoutSeconds: float
     autoTransferConfig: (
@@ -1296,7 +1364,7 @@ class TransferStageConfig(BaseModel):
         | SurveyAutoTransferConfig
         | ConditionAutoTransferConfig
         | None
-    ) = None
+    )
 
 
 class ConditionAutoTransferConfig(BaseModel):
@@ -1338,7 +1406,8 @@ class AgentMediatorTemplate(BaseModel):
     )
     persona: Persona
     promptMap: Annotated[
-        dict[str, ChatPromptConfig | GenericPromptConfig], Field(title="PromptMap")
+        dict[constr(pattern=r"^(.*)$"), ChatPromptConfig | GenericPromptConfig],
+        Field(title="PromptMap"),
     ]
 
 
@@ -1517,18 +1586,42 @@ class GenericPromptConfig(BaseModel):
     structuredOutputConfig: StructuredOutputConfig | None = None
 
 
-AgentParticipantTemplate = AgentMediatorTemplate
+class AgentParticipantTemplate(AgentMediatorTemplate):
+    pass
 
 
-class JSONSchemaDefinition(
-    RootModel[String | Number | Integer | Boolean | Object | Array]
+class JSONSchemaDefinitionModel(
+    RootModel[String | Number | Integer | Boolean | Object1 | Array]
 ):
-    model_config = ConfigDict(
-        populate_by_name=True,
-    )
     root: Annotated[
-        String | Number | Integer | Boolean | Object | Array,
+        String | Number | Integer | Boolean | Object1 | Array,
         Field(title="JSONSchemaDefinition"),
+    ]
+
+
+class PromptMap(
+    RootModel[dict[constr(pattern=r"^(.*)$"), ChatPromptConfig | GenericPromptConfig]]
+):
+    root: Annotated[
+        dict[constr(pattern=r"^(.*)$"), ChatPromptConfig | GenericPromptConfig],
+        Field(title="PromptMap"),
+    ]
+
+
+class Properties(
+    RootModel[
+        dict[
+            constr(pattern=r"^(.*)$"),
+            String | Number | Integer | Boolean | Object1 | Array,
+        ]
+    ]
+):
+    root: Annotated[
+        dict[
+            constr(pattern=r"^(.*)$"),
+            String | Number | Integer | Boolean | Object1 | Array,
+        ],
+        Field(title="Properties"),
     ]
 
 
@@ -1537,6 +1630,7 @@ ExperimentTemplate.model_rebuild()
 StaticVariableConfig.model_rebuild()
 Object.model_rebuild()
 Array.model_rebuild()
+Object1.model_rebuild()
 SurveyPerParticipantStageConfig.model_rebuild()
 TextSurveyQuestion.model_rebuild()
 ConditionGroup.model_rebuild()
@@ -1545,6 +1639,7 @@ ConditionAutoTransferConfig.model_rebuild()
 TransferGroup.model_rebuild()
 AgentMediatorTemplate.model_rebuild()
 ChatPromptConfig.model_rebuild()
+PromptItemGroup.model_rebuild()
 StructuredOutputConfig.model_rebuild()
 StructuredOutputSchema.model_rebuild()
 AgentParticipantTemplate.model_rebuild()

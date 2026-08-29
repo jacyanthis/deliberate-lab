@@ -22,11 +22,14 @@ import {
   ParticipantNextStageResponse,
   RequestChipAssistanceData,
   SendAlertMessageData,
+  SendExperimenterAlertData,
+  AckExperimenterAlertData,
   SendChipOfferData,
   SendChipResponseData,
   SendParticipantCheckData,
   SetChipTurnData,
   SetParticipantRolesData,
+  SetParticipantNegotiationProfilesData,
   SetSalespersonControllerData,
   SetSalespersonMoveData,
   SetSalespersonResponseData,
@@ -34,6 +37,7 @@ import {
   SuccessResponse,
   UpdateAssetAllocationStageParticipantAnswerData,
   UpdateMultiAssetAllocationStageParticipantAnswerData,
+  UpdateChatMessageReactionData,
   UpdateChatStageParticipantAnswerData,
   UpdateCohortMetadataData,
   UpdateFlipCardStageParticipantAnswerData,
@@ -481,6 +485,21 @@ export const createChatMessageCallable = async (
   return data;
 };
 
+/** Endpoint to apply or remove a reaction on a chat message. */
+export const updateChatMessageReactionCallable = async (
+  functions: Functions,
+  config: UpdateChatMessageReactionData,
+) => {
+  const {data} = await httpsCallable<
+    UpdateChatMessageReactionData,
+    CreationResponse
+  >(
+    functions,
+    'updateChatMessageReaction',
+  )(config);
+  return data;
+};
+
 /** Generic endpoint for assigning participants to roles for role stage. */
 export const setParticipantRolesCallable = async (
   functions: Functions,
@@ -489,6 +508,21 @@ export const setParticipantRolesCallable = async (
   const {data} = await httpsCallable<SetParticipantRolesData, SuccessResponse>(
     functions,
     'setParticipantRoles',
+  )(config);
+  return data;
+};
+
+/** Generic endpoint for assigning participants to profiles for negotiation profile stage. */
+export const setParticipantNegotiationProfilesCallable = async (
+  functions: Functions,
+  config: SetParticipantNegotiationProfilesData,
+) => {
+  const {data} = await httpsCallable<
+    SetParticipantNegotiationProfilesData,
+    SuccessResponse
+  >(
+    functions,
+    'setParticipantNegotiationProfiles',
   )(config);
   return data;
 };
@@ -766,5 +800,35 @@ export const revokeDeliberateLabAPIKeyCallable = async (
     functions,
     'revokeDeliberateLabAPIKey',
   )({keyId});
+  return data;
+};
+
+/** Send experimenter-initiated alert. */
+export const sendExperimenterAlertCallable = async (
+  functions: Functions,
+  config: SendExperimenterAlertData,
+) => {
+  const {data} = await httpsCallable<
+    SendExperimenterAlertData,
+    SimpleResponse<string>
+  >(
+    functions,
+    'sendExperimenterAlert',
+  )(config);
+  return data;
+};
+
+/** Acknowledge experimenter-initiated alert (called by participant). */
+export const ackExperimenterAlertCallable = async (
+  functions: Functions,
+  config: AckExperimenterAlertData,
+) => {
+  const {data} = await httpsCallable<
+    AckExperimenterAlertData,
+    SimpleResponse<string>
+  >(
+    functions,
+    'ackExperimenterAlert',
+  )(config);
   return data;
 };

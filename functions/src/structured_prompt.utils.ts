@@ -1,8 +1,5 @@
 import {
-  SECONDARY_PROFILE_SET_ID,
-  TERTIARY_PROFILE_SET_ID,
-  PROFILE_SET_ANIMALS_2_ID,
-  PROFILE_SET_NATURE_ID,
+  getActiveProfileSetId,
   PROMPT_ITEM_PROFILE_CONTEXT_PARTICIPANT_SCAFFOLDING,
   PROMPT_ITEM_PROFILE_INFO_PARTICIPANT_SCAFFOLDING,
   BasePromptConfig,
@@ -191,12 +188,8 @@ export async function addFirestoreDataForPromptItem(
   // Get profile set ID based on stage ID
   // (Temporary workaround before profile sets are refactored)
   const getProfileSetId = (stageId: string) => {
-    if (stageId.includes(SECONDARY_PROFILE_SET_ID)) {
-      return PROFILE_SET_ANIMALS_2_ID;
-    } else if (stageId.includes(TERTIARY_PROFILE_SET_ID)) {
-      return PROFILE_SET_NATURE_ID;
-    }
-    return '';
+    const stage = data[stageId]?.stage;
+    return stage?.anonymousProfileSetId || getActiveProfileSetId(stageId);
   };
 
   switch (promptItem.type) {
@@ -401,6 +394,7 @@ function getProfileInfoForPrompt(
   userProfile: ParticipantProfileExtended | MediatorProfileExtended,
   includeScaffolding: boolean,
   stageId: string, // Used for temporary stage ID hack that sets profiles
+  stage?: StageConfig,
 ): string {
   // This is a temporary check to see if the profile names should be
   // overrided for this stage only, e.g., if the profile is typically
@@ -409,12 +403,7 @@ function getProfileInfoForPrompt(
   // as prior stages' context will not make sense if it references "Animals 1"
   // profile and the current stage uses "Animals 2".
   const getProfileSetId = () => {
-    if (stageId.includes(SECONDARY_PROFILE_SET_ID)) {
-      return PROFILE_SET_ANIMALS_2_ID;
-    } else if (stageId.includes(TERTIARY_PROFILE_SET_ID)) {
-      return PROFILE_SET_NATURE_ID;
-    }
-    return '';
+    return stage?.anonymousProfileSetId || getActiveProfileSetId(stageId);
   };
 
   const scaffoldingPrefix = includeScaffolding ? `Alias: ` : '';
@@ -562,6 +551,8 @@ async function processPromptItems(
   },
   userProfile: ParticipantProfileExtended | MediatorProfileExtended,
   includeScaffolding: boolean,
+  // Position prefix for nested groups, mixed into shuffle seeds.
+  seedNamespace = '',
 ): Promise<string> {
   const experiment = promptData.experiment;
   const items: string[] = [];
@@ -589,7 +580,13 @@ async function processPromptItems(
     participantForVariables,
   );
 
-  for (const promptItem of promptItems) {
+  // The first shuffled group keeps the bare seed (see the GROUP case).
+  const firstShuffledGroupIndex = promptItems.findIndex(
+    (it) =>
+      it.type === PromptItemType.GROUP &&
+      (it as PromptItemGroup).shuffleConfig?.shuffle,
+  );
+  for (const [itemIndex, promptItem] of promptItems.entries()) {
     // Check condition if present (only for private chat contexts)
     if (
       !shouldIncludePromptItem(
@@ -648,7 +645,12 @@ async function processPromptItems(
         break;
       case PromptItemType.PROFILE_INFO:
         items.push(
-          getProfileInfoForPrompt(userProfile, includeScaffolding, stageId),
+          getProfileInfoForPrompt(
+            userProfile,
+            includeScaffolding,
+            stageId,
+            promptData.data[stageId]?.stage,
+          ),
         );
         break;
       case PromptItemType.STAGE_CONTEXT:
@@ -715,7 +717,18 @@ async function processPromptItems(
               seedString = promptGroup.shuffleConfig.customSeed;
               break;
           }
-          groupItems = shuffleWithSeed(groupItems, seedString);
+          // The first shuffled group keeps the bare seed, so existing
+          // prompts are unchanged. Later groups mix the stage and their
+          // position into the seed so distinct groups shuffle independently,
+          // across stages too.
+          const isFirstShuffledGroup =
+            seedNamespace === '' && itemIndex === firstShuffledGroupIndex;
+          groupItems = shuffleWithSeed(
+            groupItems,
+            isFirstShuffledGroup
+              ? seedString
+              : `${seedString}::${stageId}::${seedNamespace}${itemIndex}`,
+          );
         }
 
         const groupText = await processPromptItems(
@@ -726,6 +739,7 @@ async function processPromptItems(
           promptData,
           userProfile,
           includeScaffolding,
+          `${seedNamespace}${itemIndex}.`,
         );
         if (groupText) items.push(groupText);
         break;
