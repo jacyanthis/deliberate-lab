@@ -30,6 +30,8 @@ import {
 export interface SurveyStageConfig extends BaseStageConfig {
   kind: StageKind.SURVEY;
   questions: SurveyQuestion[];
+  timeLimitInMinutes: number | null; // Maximum duration in minutes (integer), or null if no limit.
+  timeMinimumInMinutes: number | null; // Minimum time participants must stay in minutes (integer), or null if no minimum.
 }
 
 /** Special "survey per participant" stage
@@ -179,6 +181,8 @@ export function createSurveyStage(
     descriptions: config.descriptions ?? createStageTextConfig(),
     progress: config.progress ?? createStageProgressConfig(),
     questions: config.questions ?? [],
+    timeLimitInMinutes: config.timeLimitInMinutes ?? null,
+    timeMinimumInMinutes: config.timeMinimumInMinutes ?? null,
   };
 }
 
@@ -459,6 +463,17 @@ export function isSurveyAnswerComplete(
         if (
           textQuestion.minCharCount !== undefined &&
           length < textQuestion.minCharCount
+        ) {
+          return false;
+        }
+        //TODO: make the "numerical only" a feature in the free-form QA. (https://github.com/PAIR-code/deliberate-lab/issues/1210)
+        const titleLower = textQuestion.questionTitle.toLowerCase();
+        if (
+          (titleLower.includes('type a number') ||
+            titleLower.includes('enter numbers only') ||
+            titleLower.includes('number only') ||
+            titleLower.includes('numbers only')) &&
+          isNaN(Number(textAnswer.answer.trim()))
         ) {
           return false;
         }
